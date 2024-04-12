@@ -3,7 +3,7 @@ import streamlit as st
 import os
 
 # Import components and pages
-from components import home, refactor_page, style_page, test_page, \
+from components.optimize_page import optimize_page
     lang_page, code_documentation_page, database_page, optimize_page, \
     model_trainer_page, notebook_integration_page, xai_page, \
     versioning_tracker_page, nlp_nlg_page, devops_page, api_doc_page, \
