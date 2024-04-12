@@ -1,14 +1,18 @@
+# components/database_page.py
 import streamlit as st
-from langchain.chat_models import ChatOpenAI
-from data.database_system import DATABASE_SYSTEM
+import sqlite3
 
 def show_database_page(chat):
     st.title("Database Interaction")
-    st.write("This page interacts with a database system.")
+    st.write("This page interacts with a SQLite database.")
 
-    database_selection = st.selectbox("Select a database system:", DATABASE_SYSTEM)
-    database_query = st.text_input("Enter the database query:")
+    def execute_query(query):
+        conn = sqlite3.connect("test.db")
+        result = conn.execute(query)
+        return result.fetchall()
+
+    database_query = st.text_input("Enter the SQLite query:", "SELECT * FROM users;")
 
     if st.button("Execute Query"):
-        # Implement the functionality for executing a query
-        pass
+        result = execute_query(database_query)
+        st.write(result)
