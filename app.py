@@ -3,7 +3,7 @@ import streamlit as st
 import os
 
 # Import components and pages
-from components import home, refactor_page, style_page, test_page
+from components import home, refactor_page, style_page, test_page, \
     lang_page, code_documentation_page, database_page, optimize_page, \
     model_trainer_page, notebook_integration_page, xai_page, \
     versioning_tracker_page, nlp_nlg_page, devops_page, api_doc_page, \
@@ -33,24 +33,13 @@ else:
     )
 
     # Show the navigation menu
-    selected = option_menu(
-        menu_title="CodeCraftGPT",
-        options=[
-            "Home", "RefactorRite", "StyleSculpt",
-            "TestGenius", "LangLink", "CodeDocGenius", "Database", "AutoOptimizer",
-            "ModelTrainer", "NotebookIntegration", "ExplainableAI", "DataVersioning",
-            "NLPandNLG", "DevOps", "APIDocGen", "CodeReviewAssistant",
-            "VersionControl", "RecommendationSystem", "CodeSecurityScanner",
-            "CodeDiagramConverter"
-        ],
-        icons=[
-            'house', 'gear', 'palette', 'clipboard2-pulse',
-            'code-slash', 'file-text', 'database', 'diagram-3',
-            'diagram-project', 'diagram-3', 'diagram-3', 'diagram-3',
-            'diagram-3', 'gear', 'file-text', 'file-code',
-            'screwdriver-wrench', 'file-text', 'diagram-3', 'diagram-3',
-            'code-fork'
-        ],
+    selected = st.sidebar.select_icon("fa-icon",
+        ["Home", "RefactorRite", "StyleSculpt", "TestGenius", "LangLink",
+        "CodeDocGenius", "Database", "AutoOptimizer", "ModelTrainer",
+        "NotebookIntegration", "ExplainableAI", "DataVersioning",
+        "NLPandNLG", "DevOps", "APIDocGen", "CodeReviewAssistant",
+        "VersionControl", "RecommendationSystem", "CodeSecurityScanner",
+        "CodeDiagramConverter"],
         default_index=0
     )
 
