@@ -1,1 +1,1 @@
-from components.code_documentation_page import *
+from .home import code_documentation_page
