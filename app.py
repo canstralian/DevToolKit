@@ -4,12 +4,11 @@ import os
 
 # Import components and pages
 from components.optimize_page import optimize_page
-    lang_page, code_documentation_page, database_page, optimize_page, \
-    model_trainer_page, notebook_integration_page, xai_page, \
-    versioning_tracker_page, nlp_nlg_page, devops_page, api_doc_page, \
-    code_review_page, version_control_page, recommendation_system_page, \
+    lang_page, code_documentation_page, database_page, optimize_page,
+    model_trainer_page, notebook_integration_page, xai_page,
+    versioning_tracker_page, nlp_nlg_page, devops_page, api_doc_page,
+    code_review_page, version_control_page, recommendation_system_page,
     code_security_scanner_page, code_diagram_page
-
 # Initialize the app
 st.set_page_config(
     page_title="Codecrafter GPT: A Comprehensive Code Enhancement Platform",
