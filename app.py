@@ -1,73 +1,38 @@
-import streamlit as st
-import os
+import gradio as gr
+from transformers import pipeline
 
-# Import components and pages
-from components.code_documentation_page import home, refactor_page, style_page, test_page, \
-    lang_page, code_documentation_page, database_page, optimize_page, \
-    model_trainer_page, notebook_integration_page, xai_page, \
-    versioning_tracker_page, nlp_nlg_page, devops_page, api_doc_page, \
-    code_review_page, version_control_page, recommendation_system_page, \
-    code_security_scanner_page, code_diagram_page
+from components.database_page import database_page
+from components.documentation_page import documentation_page
+from components.home import home
+from components.lang_page import lang_page
+from components.optimization_page import optimization_page
+from components.refactor_page import refactor_page
+from components.style_page import style_page
+from components.test_page import test_page
 
-# Initialize the app
-st.set_page_config(
-    page_title="Codecrafter GPT: A Comprehensive Code Enhancement Platform",
-    page_icon="🚀",
-    layout="wide"
-)
+# Gradio interface
+def setup_interface():
+    with gr.Blocks() as demo:
+        gr.Markdown("### Select Model and Task")
+        with gr.Row():
+            model_name = gr.Dropdown(label="Model", choices=["gpt2", "bert-base-uncased"])
+            task = gr.Dropdown(label="Task", choices=["text-generation", "text-classification"])
+        input_data = gr.Textbox(label="Input")
+        output = gr.Textbox(label="Output")
 
-# Initialize the sidebar
-st.sidebar.title("OpenAI API Key")
-api_key = st.sidebar.text_input("Enter your OpenAI API key:", type='password')
+        input_data.change(fn=model_inference, inputs=[model_name, task, input_data], outputs=output)
 
-if not api_key:
-    st.warning("Please enter your OpenAI API key to access pages.")
-else:
-    # Instantiate the ChatOpenAI object
-    from langchain.chat_models import ChatOpenAI
-    chat = ChatOpenAI(
-        model="gpt-3.5-turbo-16k",
-        temperature=0,
-        api_key=api_key
-    )
+    return demo
 
-    # Show the navigation menu
-    selected = st.sidebar.select_icon("fa-icon",
-        ["Home", "RefactorRite", "StyleSculpt", "TestGenius", "LangLink",
-        "CodeDocGenius", "Database", "AutoOptimizer", "ModelTrainer",
-        "NotebookIntegration", "ExplainableAI", "DataVersioning",
-        "NLPandNLG", "DevOps", "APIDocGen", "CodeReviewAssistant",
-        "VersionControl", "RecommendationSystem", "CodeSecurityScanner",
-        "CodeDiagramConverter"],
-        default_index=0
-    )
+# Function to generate text or perform other tasks based on model selection
+def model_inference(model_name, task, input_data):
+    try:
+        model_pipeline = pipeline(task, model=model_name)
+        result = model_pipeline(input_data)
+        return result
+    except Exception as e:
+        return f"Error: {e}"
 
-    # Define a dictionary mapping page names to their corresponding functions
-    pages = {
-        "Home": home.show_home_page,
-        "RefactorRite": refactor_page.show_refactor_page,
-        "StyleSculpt": style_page.show_style_page,
-        "TestGenius": test_page.show_test_page,
-        "LangLink": lang_page.show_lang_page,
-        "CodeDocGenius": code_documentation_page.show_doc_page,
-        "Database": database_page.show_database_page,
-        "AutoOptimizer": optimize_page.show_optimize_page,
-        "ModelTrainer": model_trainer_page.show_model_trainer_page,
-        "NotebookIntegration": notebook_integration_page.show_notebook_integration_page,
-        "ExplainableAI": xai_page.show_xai_page,
-        "DataVersioning": versioning_tracker_page.show_versioning_page,
-        "NLPandNLG": nlp_nlg_page.show_nlp_nlg_page,
-        "DevOps": devops_page.show_devops_page,
-        "APIDocGen": api_doc_page.show_api_doc_page,
-        "CodeReviewAssistant": code_review_page.show_code_review_page,
-        "VersionControl": version_control_page.show_version_control_page,
-        "RecommendationSystem": recommendation_system_page.show_recommendation_system_page,
-        "CodeSecurityScanner": code_security_scanner_page.show_code_security_page,
-        "CodeDiagramConverter": code_diagram_page.show_code_diagram_page
-    }
-
-    # Call the function for the selected page
-    if selected in pages:
-        pages[selected](chat)
-    else:
-        st.error("Page not found!")
+if __name__ == "__main__":
+    interface = setup_interface()
+    interface.launch()
