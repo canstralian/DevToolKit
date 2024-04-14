@@ -4,6 +4,9 @@ from transformers import AutoModel, AutoTokenizer
 
 def get_code_generative_models():
     models_dir = os.path.join(os.getcwd(), "models")
+    if not os.path.exists(models_dir):
+        os.makedirs(models_dir)
+
     models = []
     for model_name in os.listdir(models_dir):
         model_path = os.path.join(models_dir, model_name)
