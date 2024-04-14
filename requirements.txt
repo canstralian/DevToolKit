@@ -1,3 +1,5 @@
 transformers
 huggingface-hub
 streamlit
+torch
+tensorflow
