@@ -2,6 +2,8 @@ import os
 import gradio as gr
 from transformers import AutoModel, AutoTokenizer
 
+os.environ["GRADIO_SERVER_PORT"] = "7861"
+
 def get_code_generative_models():
     models_dir = os.path.join(os.getcwd(), "models")
     if not os.path.exists(models_dir):
@@ -46,7 +48,7 @@ def main():
 
         output.change(fn=infer, inputs=[model_name, input_data], outputs=output)
 
-    interface = demo.launch(server_port=7861)
+    interface = demo.launch()
 
 if __name__ == "__main__":
     main()
