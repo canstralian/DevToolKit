@@ -1,8 +1,9 @@
-from transformers import HfApi, pipeline
+from huggingface_hub import HfApi
+from transformers import pipeline
 
 # Function to merge models at equal weights
 def merge_models(models):
-    model_weights = [1.0 / len(models) for _ in range(len(models))]
+    model_weights = [1.0 / len(models) for _ in range(len(models)]
     merged_model = pipeline("text-generation", model=models, model_weights=model_weights)
     return merged_model
 
