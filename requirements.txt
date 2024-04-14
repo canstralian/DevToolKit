@@ -3,4 +3,4 @@ langchain==0.0.335
 openai==1.2.4
 streamlit-option-menu==0.3.6
 streamlit-authenticator==0.2.3
-# Add required packages for components here
+transformers==4.39.3
