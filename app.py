@@ -1,58 +1,49 @@
-from huggingface_hub import HfApi
-from transformers import pipeline
+import os
+import gradio as gr
+from transformers import AutoModel, AutoTokenizer
 
-# Function to merge models at equal weights
-def merge_models(models):
-    model_weights = [1.0 / len(models) for _ in range(len(models))]
-    merged_model = pipeline("text-generation", model=models, model_weights=model_weights)
-    return merged_model
-
-# Retrieve code-generative models with config.json
 def get_code_generative_models():
-    api = HfApi()
-    models_list = api.list_models()
+    models_dir = os.path.join(os.getcwd(), "models")
+    models = []
+    for model_name in os.listdir(models_dir):
+        model_path = os.path.join(models_dir, model_name)
+        if os.path.isdir(model_path):
+            model_info = AutoModel.from_pretrained(model_path)
+            if "config.json" in [f.name for f in model_info.files]:
+                models.append((model_name, model_path))
+    return models
 
-    code_generative_models = []
+def model_inference(model_name, model_path, input_data):
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModel.from_pretrained(model_path)
+    inputs = tokenizer(input_data, return_tensors="pt")
+    outputs = model(**inputs)
+    result = outputs.last_hidden_state[:, 0, :]
+    return result.tolist()
 
-    for model in models_list:
-        model_id = model.modelId
-        model_info = api.model_info(model_id)
-
-        if "config.json" in model_info.keys():
-            code_generative_models.append(model_id)
-
-    return code_generative_models
-
-# Main function to merge models and deploy the merged model
 def main():
-    code_generative_models = get_code_generative_models()
-    
-    if len(code_generative_models) < 2:
-        print("At least two code-generative models with config.json files are required for merging.")
-        return
+    models = get_code_generative_models()
+    with gr.Blocks() as demo:
+        gr.Markdown("### Select Model and Input")
+        with gr.Row():
+            model_name = gr.Dropdown(label="Model", choices=[m[0] for m in models])
+            input_data = gr.Textbox(label="Input")
 
-    models = [model for model in code_generative_models[:2]]  # Select the first two models for merging
-    merged_model = merge_models(models)
+        model_path = gr.State(None)
 
-    # Embed the merged model into a chat app for testing
-    chat_app = pipeline("text-generation", model=merged_model)
+        def update_model_path(model_name):
+            model_path.set(next(filter(lambda m: m[0] == model_name, models))[1])
 
-    # Provide options for the user to download the code/config or deploy the merged model
-    print("Chat App Ready for Testing!")
-    print("Options:")
-    print("1. Download Code/Config")
-    print("2. Deploy as a Unique Space (Requires Write-Permission API Key)")
+        input_data.change(update_model_path, inputs=model_name, outputs=model_path)
 
-    user_choice = input("Enter your choice (1 or 2): ")
+        output = gr.Textbox(label="Output")
 
-    if user_choice == "1":
-        # Download code/config
-        merged_model.save_pretrained("merged_model")
+        def infer(model_name, input_data):
+            return model_inference(model_name, model_path, input_data)
 
-    elif user_choice == "2":
-        # Deploy as a Unique Space with write-permission API Key
-        api_key = input("Enter your write-permission API Key: ")
-        # Code to deploy the merged model using the provided API key
+        output.change(fn=infer, inputs=[model_name, input_data], outputs=output)
+
+    interface = demo.launch()
 
 if __name__ == "__main__":
     main()
