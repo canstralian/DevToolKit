@@ -1,38 +1,57 @@
-import gradio as gr
-from transformers import pipeline
+from transformers import HfApi, pipeline
 
-from components.database_page import database_page
-from components.documentation_page import documentation_page
-from components.home import home
-from components.lang_page import lang_page
-from components.optimization_page import optimization_page
-from components.refactor_page import refactor_page
-from components.style_page import style_page
-from components.test_page import test_page
+# Function to merge models at equal weights
+def merge_models(models):
+    model_weights = [1.0 / len(models) for _ in range(len(models))]
+    merged_model = pipeline("text-generation", model=models, model_weights=model_weights)
+    return merged_model
 
-# Gradio interface
-def setup_interface():
-    with gr.Blocks() as demo:
-        gr.Markdown("### Select Model and Task")
-        with gr.Row():
-            model_name = gr.Dropdown(label="Model", choices=["gpt2", "bert-base-uncased"])
-            task = gr.Dropdown(label="Task", choices=["text-generation", "text-classification"])
-        input_data = gr.Textbox(label="Input")
-        output = gr.Textbox(label="Output")
+# Retrieve code-generative models with config.json
+def get_code_generative_models():
+    api = HfApi()
+    models_list = api.list_models()
 
-        input_data.change(fn=model_inference, inputs=[model_name, task, input_data], outputs=output)
+    code_generative_models = []
 
-    return demo
+    for model in models_list:
+        model_id = model.modelId
+        model_info = api.model_info(model_id)
 
-# Function to generate text or perform other tasks based on model selection
-def model_inference(model_name, task, input_data):
-    try:
-        model_pipeline = pipeline(task, model=model_name)
-        result = model_pipeline(input_data)
-        return result
-    except Exception as e:
-        return f"Error: {e}"
+        if "config.json" in model_info.keys():
+            code_generative_models.append(model_id)
+
+    return code_generative_models
+
+# Main function to merge models and deploy the merged model
+def main():
+    code_generative_models = get_code_generative_models()
+    
+    if len(code_generative_models) < 2:
+        print("At least two code-generative models with config.json files are required for merging.")
+        return
+
+    models = [model for model in code_generative_models[:2]]  # Select the first two models for merging
+    merged_model = merge_models(models)
+
+    # Embed the merged model into a chat app for testing
+    chat_app = pipeline("text-generation", model=merged_model)
+
+    # Provide options for the user to download the code/config or deploy the merged model
+    print("Chat App Ready for Testing!")
+    print("Options:")
+    print("1. Download Code/Config")
+    print("2. Deploy as a Unique Space (Requires Write-Permission API Key)")
+
+    user_choice = input("Enter your choice (1 or 2): ")
+
+    if user_choice == "1":
+        # Download code/config
+        merged_model.save_pretrained("merged_model")
+
+    elif user_choice == "2":
+        # Deploy as a Unique Space with write-permission API Key
+        api_key = input("Enter your write-permission API Key: ")
+        # Code to deploy the merged model using the provided API key
 
 if __name__ == "__main__":
-    interface = setup_interface()
-    interface.launch()
+    main()
