@@ -2,7 +2,7 @@ import os
 import gradio as gr
 from transformers import AutoModel, AutoTokenizer
 
-os.environ["GRADIO_SERVER_PORT"] = "8501"
+os.environ["GRADIO_SERVER_PORT"] = "8506"
 
 def get_code_generative_models():
     models_dir = os.path.join(os.getcwd(), "models")
