@@ -1,5 +1,5 @@
-transformers
 huggingface-hub
 streamlit
 torch
 tensorflow
+transformers==4.39.3
