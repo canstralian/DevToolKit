@@ -26,15 +26,6 @@ class AppNameConfig(AppConfig):
             # return the merged model for preview/demo
             settings.IDEA_TO_APP_PREVIEW = gguf_model
 
-requirements.txt:
-
-Django
-huggingface_models
-jinja2
-openai
-
-models.py:
-
 from django.db import models
 
 class CodeModel(models.Model):
@@ -63,7 +54,6 @@ def merge_models(model1, model2, function1, function3):
             merged_objects.append(merged_obj)
     return merged_objects
 
-libraries.py:
 
 import openai
 import jinja2
