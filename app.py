@@ -48,7 +48,7 @@ def main():
 
         output.change(fn=infer, inputs=[model_name, input_data], outputs=output)
 
-    interface = demo.launch(server_port=get_free_port())
+    interface = demo.launch()
 
 if __name__ == "__main__":
     main()
