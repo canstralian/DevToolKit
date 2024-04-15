@@ -1,5 +1,5 @@
-huggingface-hub
-streamlit
+gradio
+huggingface_hub
+transformers
 torch
-tensorflow
-transformers==4.39.3
+tensor
