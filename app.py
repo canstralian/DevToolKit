@@ -62,3 +62,4 @@ def function1(code):
     response = openai.Completion.create(
         engine='code-davinci-002',
         prompt=f'Translate this Python code to executable code: {code}'\
+    )
