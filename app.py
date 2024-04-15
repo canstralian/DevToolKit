@@ -74,4 +74,4 @@ def function1(code):
     openai.api_key = 'YOUR_OPENAI_API_KEY'
     response = openai.Completion.create(
         engine='code-davinci-002',
-        prompt=f'Translate this Python code to executable code: {code}\n
+        prompt=f'Translate this Python code to executable code: {code}\'n
