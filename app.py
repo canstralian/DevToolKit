@@ -36,8 +36,6 @@ class ImageModel(models.Model):
     name = models.CharField(max_length=100)
     image = models.ImageField(upload_to='images/')
 
-functions.py:
-
 def merge_models(model1, model2, function1, function3):
     # merge the selected models and functions here
     model1_objects = model1.objects.all()
@@ -53,7 +51,6 @@ def merge_models(model1, model2, function1, function3):
             }
             merged_objects.append(merged_obj)
     return merged_objects
-
 
 import openai
 import jinja2
