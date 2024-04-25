@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from huggingface_hub import HfApi
+import streamlit
 
 app = Flask(__name__)
 api = HfApi()
