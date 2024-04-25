@@ -1,3 +1,6 @@
 flask
 huggingface-hub
 transformers
+torch torchvision
+tensorflow
+flax
