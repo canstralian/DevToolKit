@@ -2,7 +2,7 @@ import transformers
 
 def generate(idea):
     # Load the code generation model
-    model_name = "Salesforce/codegen-350M-mono"
+    model_name = "PhiCo-D-Instruk"
     model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
 
