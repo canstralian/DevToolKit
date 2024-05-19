@@ -1,7 +1,0 @@
-{
-    "default_model_ids": {
-        "code_generation": "microsoft/CodeGPT-small-py",
-        "code_summarization": "microsoft/CodeBERT-base",
-        "bug_detection": "microsoft/BugBERT-base"
-    }
-}
