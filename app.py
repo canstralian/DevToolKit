@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 from huggingface_hub import HfApi
 from transformers import pipeline
-import logging
 
 app = Flask(__name__)
 api = HfApi()
