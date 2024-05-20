@@ -1,18 +1,33 @@
 import gradio as gr
 from transformers import pipeline
 
-# Assuming you have access to OpenAI's API and Codex
-# Replace 'your_api_key' with your actual OpenAI API key
-code_completion = pipeline("text-generation", model="code-davinci-002", temperature=0.7, max_length=50, num_return_sequences=1, api_key='your_api_key')
-
-def generate_code(input_code):
-  return code_completion(input_code, max_length=50, num_return_sequences=1)[0]['generated_text']
-
-iface = gr.Interface(
-  fn=generate_code,
-  inputs=gr.inputs.Textbox(label="Enter your code snippet"),
-  outputs=gr.outputs.Textbox(label="Generated Code"),
-  title="Code Completion Assistant"
+# Load the text generation pipeline
+pipe = pipeline(
+    "text-generation", 
+    model="MaziyarPanahi/BASH-Coder-Mistral-7B-Mistral-7B-Instruct-v0.2-slerp-GGUF"
 )
 
+def generate_bash_code(prompt):
+    """Generates BASH code using the Mistral-7B pipeline."""
+    sequences = pipe(
+        prompt, 
+        max_length=200, 
+        num_return_sequences=1,
+        do_sample=True,  # Enable sampling for more creative output
+        top_k=50,       # Explore a wider range of vocabulary
+        top_p=0.95,      # Control the probability distribution of tokens
+        temperature=0.8   # Adjust temperature for creativity 
+    )
+    return sequences[0]['generated_text']
+
+# Create the Gradio interface
+iface = gr.Interface(
+    fn=generate_bash_code,
+    inputs=gr.Textbox(lines=5, label="Describe what you want your BASH script to do"),
+    outputs=gr.Code(language="bash", label="Generated BASH Code"),
+    title="BASH Coder",
+    description="Generate BASH scripts using a Mistral-7B model.",
+)
+
+# Launch the interface
 iface.launch()
