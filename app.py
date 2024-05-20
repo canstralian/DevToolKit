@@ -1,46 +1,18 @@
-from flask import Flask, request, jsonify
-from huggingface_hub import HfApi
+import gradio as gr
 from transformers import pipeline
 
-app = Flask(__name__)
-api = HfApi()
+# Assuming you have access to OpenAI's API and Codex
+# Replace 'your_api_key' with your actual OpenAI API key
+code_completion = pipeline("text-generation", model="code-davinci-002", temperature=0.7, max_length=50, num_return_sequences=1, api_key='your_api_key')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger()
+def generate_code(input_code):
+  return code_completion(input_code, max_length=50, num_return_sequences=1)[0]['generated_text']
 
-@app.route('/search_datasets', methods=['GET'])
-def search_datasets():
-    try:
-        query = request.args.get('query')
-        if not query:
-            logger.error("No query provided for dataset search.")
-            return jsonify({"error": "No query parameter provided"}), 400
-        
-        logger.info(f"Searching datasets with query: {query}")
-        datasets = api.list_datasets(search=query, full=True)
-        return jsonify(datasets)
-    except Exception as e:
-        logger.error(f"Failed to search datasets: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+iface = gr.Interface(
+  fn=generate_code,
+  inputs=gr.inputs.Textbox(label="Enter your code snippet"),
+  outputs=gr.outputs.Textbox(label="Generated Code"),
+  title="Code Completion Assistant"
+)
 
-@app.route('/run_inference', methods=['POST'])
-def run_inference():
-    try:
-        model_id = request.json.get('model_id')
-        inputs = request.json.get('inputs')
-        
-        if not model_id or not inputs:
-            logger.error("Model ID or inputs missing in the request.")
-            return jsonify({"error": "Model ID or inputs missing in the request"}), 400
-        
-        logger.info(f"Running inference using model: {model_id}")
-        model_pipeline = pipeline(task="text-generation", model=model_id)
-        results = model_pipeline(inputs)
-        return jsonify(results)
-    except Exception as e:
-        logger.error(f"Failed to run inference: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    app.launch()
+iface.launch()
