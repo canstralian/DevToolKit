@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Code Completion Assistant</title>
+  </head>
+  <body>
+    <div id="my_gradio_app">
+      <!-- The embedded code completion assistant will be displayed here -->
+    </div>
+    <script>
+      // Assuming you have access to OpenAI's API and Codex
+      // Replace 'your_api_key' with your actual OpenAI API key
+      const code_completion = pipeline("text-generation", model="code-davinci-002", temperature=0.7, max_length=50, num_return_sequences=1, api_key='your_api_key');
+
+      const generate_code = (input_code) => {
+        return code_completion(input_code, max_length=50, num_return_sequences=1)[0]['generated_text'];
+      };
+
+      const iface = gr.Interface({
+        generate_code: generate_code
+      }, {
+        inputs: gr.inputs.Textbox({label: "Enter your code snippet"}),
+        outputs: gr.outputs.Textbox({label: "Generated Code"}),
+        title: "Code Completion Assistant"
+      });
+
+      // Render the embedded code completion assistant
+      iface.mount("my_gradio_app");
+    </script>
+  </body>
+</html>
