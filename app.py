@@ -152,8 +152,8 @@ def generate_code(idea):
 st.title("CodeCraft: Your AI-Powered Development Toolkit")
 
 # Workspace Selection
-st.header("Select Workspace")
-project_name = st.selectbox("Choose a project", os.listdir('projects'))
+st.sidebar.header("Select Workspace")  # Use st.sidebar.selectbox
+project_name = st.sidebar.selectbox("Choose a project", os.listdir('projects'))
 
 # Chat Interface
 st.header("Chat with CodeCraft")
