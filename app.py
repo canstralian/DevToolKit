@@ -51,4 +51,4 @@ iface = gr.ChatInterface(chat_with_code,
                         title="Code Interpreter & Terminal Chat",
                         description="Ask questions, write code, and run terminal commands!")
 
-iface.launch()
+ iface.launch(server_port=7861)
