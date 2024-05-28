@@ -3,7 +3,7 @@ import os
 import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
-from pylint import epylint as lint
+from pylint import lint
 from io import StringIO
 import sys
 
@@ -98,7 +98,11 @@ def code_editor_interface(code):
     # Lint code using pylint
     try:
         pylint_output = StringIO()
-        lint.py_run(f"--from-stdin", return_std=True, stdin=StringIO(formatted_code))
+        sys.stdout = pylint_output
+        sys.stderr = pylint_output
+        lint.Run(['--from-stdin'], stdin=StringIO(formatted_code))
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
         lint_message = pylint_output.getvalue()
     except Exception as e:
         lint_message = f"Pylint error: {e}"
