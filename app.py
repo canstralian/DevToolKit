@@ -1,23 +1,24 @@
-import gradio as gr
+import streamlit as st
 import os
 import subprocess
 import random
 import string
 from huggingface_hub import cached_download, hf_hub_url
 from transformers import pipeline
+import black
+import pylint
 
 # Define functions for each feature
 
 # 1. Chat Interface
-def chat_interface(input_text, history):
+def chat_interface(input_text):
     """Handles user input in the chat interface.
 
     Args:
         input_text: User's input text.
-        history: Chat history.
 
     Returns:
-        A tuple containing the updated chat history and the chatbot's response.
+        The chatbot's response.
     """
     # Load the appropriate language model from Hugging Face
     model_name = 'google/flan-t5-xl'  # Choose a suitable model
@@ -27,21 +28,17 @@ def chat_interface(input_text, history):
 
     # Generate chatbot response
     response = generator(input_text, max_length=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
-
-    # Update chat history
-    history.append((input_text, response))
-    return history, response
+    return response
 
 # 2. Terminal
-def terminal_interface(command, history):
+def terminal_interface(command):
     """Executes commands in the terminal.
 
     Args:
         command: User's command.
-        history: Terminal command history.
 
     Returns:
-        A tuple containing the updated command history and the terminal output.
+        The terminal output.
     """
     # Execute command
     try:
@@ -49,10 +46,7 @@ def terminal_interface(command, history):
         output = process.stdout
     except Exception as e:
         output = f'Error: {e}'
-
-    # Update command history
-    history.append((command, output))
-    return history, output
+    return output
 
 # 3. Code Editor
 def code_editor_interface(code):
@@ -64,22 +58,31 @@ def code_editor_interface(code):
     Returns:
         Formatted and linted code.
     """
-    # Implement code completion, formatting, and linting using appropriate libraries
-    # For example, you can use the 'black' library for code formatting
-    # and 'pylint' for linting
-    # ...
-    return code
+    # Format code using black
+    try:
+        formatted_code = black.format_str(code, mode=black.FileMode())
+    except black.InvalidInput:
+        formatted_code = code  # Keep original code if formatting fails
+
+    # Lint code using pylint
+    try:
+        pylint_output = pylint.run(formatted_code, output=None)
+        lint_results = pylint_output.linter.stats.get('global_note', 0)
+        lint_message = f"Pylint score: {lint_results:.2f}"
+    except Exception as e:
+        lint_message = f"Pylint error: {e}"
+
+    return formatted_code, lint_message
 
 # 4. Workspace
-def workspace_interface(project_name, history):
+def workspace_interface(project_name):
     """Manages projects, files, and resources in the workspace.
 
     Args:
         project_name: Name of the new project.
-        history: Workspace history.
 
     Returns:
-        A tuple containing the updated workspace history and project creation status.
+        Project creation status.
     """
     # Create project directory
     try:
@@ -87,10 +90,7 @@ def workspace_interface(project_name, history):
         status = f'Project \"{project_name}\" created successfully.'
     except FileExistsError:
         status = f'Project \"{project_name}\" already exists.'
-
-    # Update workspace history
-    history.append((project_name, status))
-    return history, status
+    return status
 
 # 5. AI-Infused Tools
 
@@ -110,56 +110,41 @@ def summarize_text(text):
     summary = summarizer(text, max_length=100, min_length=30)[0]['summary_text']
     return summary
 
-# 6. Hugging Face Integration
+# Streamlit App
+st.title("CodeCraft: Your AI-Powered Development Toolkit")
 
-# Define functions for accessing, training, and deploying models
+# Chat Interface
+st.header("Chat with CodeCraft")
+chat_input = st.text_area("Enter your message:")
+if st.button("Send"):
+    chat_response = chat_interface(chat_input)
+    st.write(f"CodeCraft: {chat_response}")
 
-# Example: Load a pre-trained model
-def load_model(model_name):
-    """Loads a pre-trained model from Hugging Face.
+# Terminal Interface
+st.header("Terminal")
+terminal_input = st.text_input("Enter a command:")
+if st.button("Run"):
+    terminal_output = terminal_interface(terminal_input)
+    st.code(terminal_output, language="bash")
 
-    Args:
-        model_name: Name of the model to be loaded.
+# Code Editor Interface
+st.header("Code Editor")
+code_editor = st.code_area("Write your code:", language="python")
+if st.button("Format & Lint"):
+    formatted_code, lint_message = code_editor_interface(code_editor)
+    st.code(formatted_code, language="python")
+    st.info(lint_message)
 
-    Returns:
-        The loaded model.
-    """
-    model_url = hf_hub_url(repo_id=model_name, revision='main')
-    model = cached_download(model_url)
-    return model
+# Workspace Interface
+st.header("Workspace")
+project_name = st.text_input("Enter project name:")
+if st.button("Create Project"):
+    workspace_status = workspace_interface(project_name)
+    st.success(workspace_status)
 
-# Create Gradio interface
-with gr.Blocks() as demo:
-    # Chat interface
-    chat_history = gr.State([])  # Initialize chat history
-    chat_input = gr.Textbox(label="Chat with CodeCraft", lines=5)
-    chat_output = gr.Textbox(label="CodeCraft Response", lines=5)
-    chat_button = gr.Button(value="Send")
-    chat_button.click(chat_interface, inputs=[chat_input, chat_history], outputs=[chat_history, chat_output])
-
-    # Terminal interface
-    terminal_history = gr.State([])  # Initialize terminal history
-    terminal_input = gr.Textbox(label="Enter Command", lines=1)
-    terminal_output = gr.Textbox(label="Terminal Output", lines=5)
-    terminal_button = gr.Button(value="Run")
-    terminal_button.click(terminal_interface, inputs=[terminal_input, terminal_history], outputs=[terminal_history, terminal_output])
-
-    # Code editor interface
-    code_editor = gr.Code(label="Code Editor", lines=10, language="python")
-    code_editor.change(code_editor_interface, inputs=code_editor, outputs=code_editor)
-
-    # Workspace interface
-    workspace_history = gr.State([])  # Initialize workspace history
-    workspace_input = gr.Textbox(label="Project Name", lines=1)
-    workspace_output = gr.Textbox(label="Workspace Data", lines=5)
-    workspace_button = gr.Button(value="Create Project")
-    workspace_button.click(workspace_interface, inputs=[workspace_input, workspace_history], outputs=[workspace_history, workspace_output])
-
-    # AI-Infused Tools
-    text_input = gr.Textbox(label="Enter text to summarize")
-    summary_output = gr.Textbox(label="Summarized Text")
-    summarize_button = gr.Button(value="Summarize")
-    summarize_button.click(summarize_text, inputs=text_input, outputs=summary_output)
-
-# Launch Gradio app
-demo.launch(share=True, server_name='0.0.0.0')
+# AI-Infused Tools
+st.header("AI-Powered Tools")
+text_to_summarize = st.text_area("Enter text to summarize:")
+if st.button("Summarize"):
+    summary = summarize_text(text_to_summarize)
+    st.write(f"Summary: {summary}")
