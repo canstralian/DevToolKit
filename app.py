@@ -1,8 +1,6 @@
 import streamlit as st
 import os
 import subprocess
-import random
-import string
 from huggingface_hub import cached_download, hf_hub_url
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
@@ -22,9 +20,12 @@ def chat_interface(input_text):
     """
     # Load the appropriate language model from Hugging Face
     model_name = 'google/flan-t5-xl'  # Choose a suitable model
-    model_url = hf_hub_url(repo_id=model_name, revision='main', filename='config.json')
-    model_path = cached_download(model_url)
-    generator = pipeline('text-generation', model=model_path)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        generator = pipeline('text-generation', model=model, tokenizer=tokenizer)
+    except EnvironmentError as e:
+        return f'Error loading model: {e}'
 
     # Generate chatbot response
     response = generator(input_text, max_length=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
@@ -167,7 +168,7 @@ if st.button("Run"):
 
 # Code Editor Interface
 st.header("Code Editor")
-code_editor = st.text_area("Write your code:", language="python", height=300)
+code_editor = st.text_area("Write your code:", height=300)
 if st.button("Format & Lint"):
     formatted_code, lint_message = code_editor_interface(code_editor)
     st.code(formatted_code, language="python")
