@@ -3,7 +3,9 @@ import os
 import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
-from pylint import epylint as lint
+from pylint import lint
+from io import StringIO
+import sys
 
 PROJECT_ROOT = "projects"
 
@@ -87,8 +89,11 @@ def code_editor_interface(code):
 
     # Lint code using pylint
     try:
-        (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
-        lint_message = pylint_stdout.getvalue()
+        pylint_output = StringIO()
+        sys.stdout = pylint_output
+        lint.Run(["--from-stdin"], stdin=StringIO(formatted_code))
+        sys.stdout = sys.__stdout__
+        lint_message = pylint_output.getvalue()
     except Exception as e:
         lint_message = f"Pylint error: {e}"
 
