@@ -3,10 +3,13 @@ import os
 import subprocess
 import random
 import string
-from huggingface_hub import cached_download, hf_hub_url
+from huggingface_hub import cached_download, hf_hub_url, hf_hub_token
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 import pylint
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 # Define functions for each feature
 
@@ -148,11 +151,43 @@ def generate_code(idea):
 
     return generated_code
 
+# 7. Sentiment Analysis
+def analyze_sentiment(text):
+    """Analyzes the sentiment of a given text.
+
+    Args:
+        text: The text to analyze.
+
+    Returns:
+        A dictionary containing the sentiment label and score.
+    """
+    model_name = 'distilbert-base-uncased-finetuned-sst-3-literal-labels'
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
+    result = classifier(text)[0]
+    return result
+
+# 8. Text Translation
+def translate_text(text, target_language):
+    """Translates a given text to the specified target language.
+
+    Args:
+        text: The text to translate.
+        target_language: The target language code (e.g., 'fr' for French, 'es' for Spanish).
+
+    Returns:
+        The translated text.
+    """
+    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-es")  # Example: English to Spanish
+    translation = translator(text, target_lang=target_language)[0]['translation_text']
+    return translation
+
 # Streamlit App
 st.title("CodeCraft: Your AI-Powered Development Toolkit")
 
 # Workspace Selection
-st.sidebar.header("Select Workspace")  # Use st.sidebar.selectbox
+st.sidebar.header("Select Workspace")
 project_name = st.sidebar.selectbox("Choose a project", os.listdir('projects'))
 
 # Chat Interface
@@ -179,10 +214,28 @@ if st.button("Format & Lint"):
 
 # AI-Infused Tools
 st.header("AI-Powered Tools")
+
+# Text Summarization
+st.subheader("Text Summarization")
 text_to_summarize = st.text_area("Enter text to summarize:")
 if st.button("Summarize"):
     summary = summarize_text(text_to_summarize)
     st.write(f"Summary: {summary}")
+
+# Sentiment Analysis
+st.subheader("Sentiment Analysis")
+text_to_analyze = st.text_area("Enter text to analyze sentiment:")
+if st.button("Analyze Sentiment"):
+    sentiment_result = analyze_sentiment(text_to_analyze)
+    st.write(f"Sentiment: {sentiment_result['label']}, Score: {sentiment_result['score']}")
+
+# Text Translation
+st.subheader("Text Translation")
+text_to_translate = st.text_area("Enter text to translate:")
+target_language = st.selectbox("Choose target language", ['fr', 'es', 'de', 'zh-CN'])  # Example languages
+if st.button("Translate"):
+    translation = translate_text(text_to_translate, target_language)
+    st.write(f"Translation: {translation}")
 
 # Code Generation
 st.header("Code Generation")
@@ -194,10 +247,15 @@ if st.button("Generate Code"):
     except Exception as e:
         st.error(f"Error generating code: {e}")
 
-# Launch Chat App
+# Launch Chat App (with Authentication)
 if st.button("Launch Chat App"):
     # Get the current working directory
     cwd = os.getcwd()
+
+    # User Authentication
+    hf_token = st.text_input("Enter your Hugging Face Token:")
+    if hf_token:
+        hf_hub_token(hf_token)
 
     # Construct the command to launch the chat app
     command = f"cd projects/{project_name} && streamlit run chat_app.py"
