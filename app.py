@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import subprocess
-from huggingface_hub import cached_download, hf_hub_url
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 import pylint
@@ -18,8 +17,8 @@ def chat_interface(input_text):
     Returns:
         The chatbot's response.
     """
-    # Load the appropriate language model from Hugging Face
-    model_name = 'google/flan-t5-xl'  # Choose a suitable model
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = 'gpt2'
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
