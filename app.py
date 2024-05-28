@@ -3,11 +3,19 @@ import os
 import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
-from pylint import lint
+from pylint import epylint as lint
 from io import StringIO
 import sys
 
 PROJECT_ROOT = "projects"
+
+# Global state to manage communication between Tool Box and Workspace Chat App
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'terminal_history' not in st.session_state:
+    st.session_state.terminal_history = []
+if 'workspace_projects' not in st.session_state:
+    st.session_state.workspace_projects = {}
 
 # Define functions for each feature
 
@@ -90,9 +98,7 @@ def code_editor_interface(code):
     # Lint code using pylint
     try:
         pylint_output = StringIO()
-        sys.stdout = pylint_output
-        lint.Run(["--from-stdin"], stdin=StringIO(formatted_code))
-        sys.stdout = sys.__stdout__
+        lint.py_run(f"--from-stdin", return_std=True, stdin=StringIO(formatted_code))
         lint_message = pylint_output.getvalue()
     except Exception as e:
         lint_message = f"Pylint error: {e}"
@@ -118,6 +124,7 @@ def workspace_interface(project_name):
         with open(requirements_path, "w") as req_file:
             req_file.write("")  # Initialize an empty requirements.txt file
         status = f'Project "{project_name}" created successfully.'
+        st.session_state.workspace_projects[project_name] = {'files': []}
     except FileExistsError:
         status = f'Project "{project_name}" already exists.'
     return status
@@ -140,6 +147,7 @@ def add_code_to_workspace(project_name, code, file_name):
         with open(file_path, "w") as code_file:
             code_file.write(code)
         status = f'File "{file_name}" added to project "{project_name}" successfully.'
+        st.session_state.workspace_projects[project_name]['files'].append(file_name)
     except Exception as e:
         status = f"Error: {e}"
     return status
@@ -148,7 +156,6 @@ def add_code_to_workspace(project_name, code, file_name):
 # 5. AI-Infused Tools
 
 # Define custom AI-powered tools using Hugging Face models
-
 
 # Example: Text summarization tool
 def summarize_text(text):
@@ -281,6 +288,7 @@ if app_mode == "Tool Box":
     chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
         chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
 
     # Terminal Interface
@@ -288,6 +296,7 @@ if app_mode == "Tool Box":
     terminal_input = st.text_input("Enter a command:")
     if st.button("Run"):
         terminal_output = terminal_interface(terminal_input)
+        st.session_state.terminal_history.append((terminal_input, terminal_output))
         st.code(terminal_output, language="bash")
 
     # Code Editor Interface
@@ -358,4 +367,24 @@ elif app_mode == "Workspace Chat App":
     chat_input = st.text_area("Enter your message for guidance:")
     if st.button("Get Guidance"):
         chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
+
+    # Display Chat History
+    st.subheader("Chat History")
+    for user_input, response in st.session_state.chat_history:
+        st.write(f"User: {user_input}")
+        st.write(f"CodeCraft: {response}")
+
+    # Display Terminal History
+    st.subheader("Terminal History")
+    for command, output in st.session_state.terminal_history:
+        st.write(f"Command: {command}")
+        st.code(output, language="bash")
+
+    # Display Projects and Files
+    st.subheader("Workspace Projects")
+    for project, details in st.session_state.workspace_projects.items():
+        st.write(f"Project: {project}")
+        for file in details['files']:
+            st.write(f"  - {file}")
