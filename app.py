@@ -26,8 +26,15 @@ def chat_interface(input_text):
     except EnvironmentError as e:
         return f'Error loading model: {e}'
 
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
+
     # Generate chatbot response
-    response = generator(input_text, max_new_tokens=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
+    outputs = model.generate(input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True)
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
 # 2. Terminal
@@ -112,7 +119,7 @@ def summarize_text(text):
 
 # 6. Code Generation
 def generate_code(idea):
-    """Generates code based on a given idea using the bigscience/T0_3B model.
+    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model.
 
     Args:
         idea: The idea for the code to be generated.
@@ -122,9 +129,12 @@ def generate_code(idea):
     """
 
     # Load the code generation model
-    model_name = 'bigscience/T0_3B'  # Choose your model
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model_name = 'EleutherAI/gpt-neo-2.7B'
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    except EnvironmentError as e:
+        return f'Error loading model: {e}'
 
     # Generate the code
     input_text = f"""
