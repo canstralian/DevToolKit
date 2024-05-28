@@ -4,7 +4,7 @@ import subprocess
 import random
 import string
 from huggingface_hub import cached_download, hf_hub_url
-from transformers import pipeline
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 import pylint
 
@@ -110,6 +110,44 @@ def summarize_text(text):
     summary = summarizer(text, max_length=100, min_length=30)[0]['summary_text']
     return summary
 
+# 6. Code Generation
+def generate_code(idea):
+    """Generates code based on a given idea using the bigscience/T0_3B model.
+
+    Args:
+        idea: The idea for the code to be generated.
+
+    Returns:
+        The generated code as a string.
+    """
+
+    # Load the code generation model
+    model_name = 'bigscience/T0_3B'  # Choose your model
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # Generate the code
+    input_text = f"""
+    # Idea: {idea}
+    # Code:
+    """
+    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    output_sequences = model.generate(
+        input_ids=input_ids,
+        max_length=1024,
+        num_return_sequences=1,
+        no_repeat_ngram_size=2,
+        early_stopping=True,
+        temperature=0.7,  # Adjust temperature for creativity
+        top_k=50,  # Adjust top_k for diversity
+    )
+    generated_code = tokenizer.decode(output_sequences[0], skip_special_tokens=True)
+
+    # Remove the prompt and formatting
+    generated_code = generated_code.split("\n# Code:")[1].strip()
+
+    return generated_code
+
 # Streamlit App
 st.title("CodeCraft: Your AI-Powered Development Toolkit")
 
@@ -148,3 +186,10 @@ text_to_summarize = st.text_area("Enter text to summarize:")
 if st.button("Summarize"):
     summary = summarize_text(text_to_summarize)
     st.write(f"Summary: {summary}")
+
+# Code Generation
+st.header("Code Generation")
+code_idea = st.text_input("Enter your code idea:")
+if st.button("Generate Code"):
+    generated_code = generate_code(code_idea)
+    st.code(generated_code, language="python")
