@@ -1,7 +1,5 @@
-huggingface-hub
+streamlit
 transformers
-gradio
-requests
-pandas
-numpy
-matplotlib
+huggingface_hub
+black
+pylint
