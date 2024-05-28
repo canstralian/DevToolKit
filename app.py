@@ -44,11 +44,9 @@ I am confident that I can leverage my expertise to assist you in developing and 
         """
         Autonomous build logic that continues based on the state of chat history and workspace projects.
         """
-        # Example logic: Generate a summary of chat history and workspace state
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
-        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
+        summary += "\n\nWorkspace Projects:\n" + "\n.join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
-        # Example: Generate the next logical step in the project
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
         return summary, next_step
@@ -109,79 +107,16 @@ def chat_interface_with_agent(input_text, agent_name):
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
-# Terminal interface
-def terminal_interface(command, project_name=None):
-    if project_name:
-        project_path = os.path.join(PROJECT_ROOT, project_name)
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=project_path)
-    else:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    return result.stdout
-
-# Code editor interface
-def code_editor_interface(code):
-    formatted_code = black.format_str(code, mode=black.FileMode())
-    pylint_output = lint.Run([formatted_code], do_exit=False)
-    pylint_output_str = StringIO()
-    pylint_output.linter.reporter.write_messages(pylint_output_str)
-    return formatted_code, pylint_output_str.getvalue()
-
-# Text summarization tool
-def summarize_text(text):
-    summarizer = pipeline("summarization")
-    summary = summarizer(text, max_length=130, min_length=30, do_sample=False)
-    return summary[0]['summary_text']
-
-# Sentiment analysis tool
-def sentiment_analysis(text):
-    analyzer = pipeline("sentiment-analysis")
-    result = analyzer(text)
-    return result[0]['label']
-
-# Text translation tool (code translation)
-def translate_code(code, source_language, target_language):
-    # Placeholder for translation logic
-    return f"Translated {source_language} code to {target_language}."
-
-# Code generation tool
-def generate_code(idea):
-    response = openai.Completion.create(
-        engine="davinci-codex",
-        prompt=idea,
-        max_tokens=150
-    )
-    return response.choices[0].text.strip()
-
-# Workspace interface
-def workspace_interface(project_name):
-    project_path = os.path.join(PROJECT_ROOT, project_name)
-    if not os.path.exists(project_path):
-        os.makedirs(project_path)
-        st.session_state.workspace_projects[project_name] = {'files': []}
-        return f"Project '{project_name}' created successfully."
-    else:
-        return f"Project '{project_name}' already exists."
-
-# Add code to workspace
-def add_code_to_workspace(project_name, code, file_name):
-    project_path = os.path.join(PROJECT_ROOT, project_name)
-    if not os.path.exists(project_path):
-        return f"Project '{project_name}' does not exist."
-    
-    file_path = os.path.join(project_path, file_name)
-    with open(file_path, "w") as file:
-        file.write(code)
-    st.session_state.workspace_projects[project_name]['files'].append(file_name)
-    return f"Code added to '{file_name}' in project '{project_name}'."
-
-# Chat interface
-def chat_interface(input_text):
-    response = openai.Completion.create(
-        engine="davinci-codex",
-        prompt=input_text,
-        max_tokens=150
-    )
-    return response.choices[0].text.strip()
+# Preset commands for no-code-knowledge developers
+preset_commands = {
+    "Create a new project": "create_project('project_name')",
+    "Add code to workspace": "add_code_to_workspace('project_name', 'code', 'file_name')",
+    "Run terminal command": "terminal_interface('command', 'project_name')",
+    "Generate code": "generate_code('code_idea')",
+    "Summarize text": "summarize_text('text')",
+    "Analyze sentiment": "sentiment_analysis('text')",
+    "Translate code": "translate_code('code', 'source_language', 'target_language')",
+}
 
 # Streamlit App
 st.title("AI Agent Creator")
@@ -210,7 +145,12 @@ elif app_mode == "Tool Box":
     st.subheader("Chat with CodeCraft")
     chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
-        chat_response = chat_interface(chat_input)
+        if chat_input.startswith("@"):
+            agent_name = chat_input.split(" ")[0][1:]  # Extract agent_name from @agent_name
+            chat_input = " ".join(chat_input.split(" ")[1:])  # Remove agent_name from input
+            chat_response = chat_interface_with_agent(chat_input, agent_name)
+        else:
+            chat_response = chat_interface(chat_input)
         st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
 
@@ -247,8 +187,8 @@ elif app_mode == "Tool Box":
     # Text Translation Tool (Code Translation)
     st.subheader("Translate Code")
     code_to_translate = st.text_area("Enter code to translate:")
-    source_language = st.text_input("Enter source language (e.g., 'Python'):")
-    target_language = st.text_input("Enter target language (e.g., 'JavaScript'):")
+    source_language = st.text_input("Enter source language (e.g. 'Python'):")
+    target_language = st.text_input("Enter target language (e.g. 'JavaScript'):")
     if st.button("Translate Code"):
         translated_code = translate_code(code_to_translate, source_language, target_language)
         st.code(translated_code, language=target_language.lower())
@@ -259,6 +199,11 @@ elif app_mode == "Tool Box":
     if st.button("Generate Code"):
         generated_code = generate_code(code_idea)
         st.code(generated_code, language="python")
+
+    # Display Preset Commands
+    st.subheader("Preset Commands")
+    for command_name, command in preset_commands.items():
+        st.write(f"{command_name}: `{command}`")
 
 elif app_mode == "Workspace Chat App":
     # Workspace Chat App
@@ -274,7 +219,7 @@ elif app_mode == "Workspace Chat App":
     # Add Code to Workspace
     st.subheader("Add Code to Workspace")
     code_to_add = st.text_area("Enter code to add to workspace:")
-    file_name = st.text_input("Enter file name (e.g., 'app.py'):")
+    file_name = st.text_input("Enter file name (e.g. 'app.py'):")
     if st.button("Add Code"):
         add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
         st.success(add_code_status)
