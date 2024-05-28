@@ -3,15 +3,13 @@ import os
 import subprocess
 import random
 import string
-from huggingface_hub import cached_download, hf_hub_url, hf_hub_token
+from huggingface_hub import cached_download, hf_hub_url
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 import pylint
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers import pipeline
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-from huggingface_hub import hf_hub_token
-print(hf_hub_token())
 
 # Define functions for each feature
 
@@ -255,10 +253,10 @@ if st.button("Launch Chat App"):
     cwd = os.getcwd()
 
     # User Authentication
-    hf_token = st.text_input("Enter your Hugging Face Token:")
-    if hf_token:
-        # Set the token using HfFolder
-        HfFolder.save_token(hf_token)
+hf_token = st.text_input("Enter your Hugging Face Token:")
+if hf_token:
+    # Set the token using HfFolder
+    HfFolder.save_token(hf_token)
 
     # Construct the command to launch the chat app
     command = f"cd projects/{project_name} && streamlit run chat_app.py"
