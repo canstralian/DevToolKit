@@ -27,7 +27,7 @@ def chat_interface(input_text):
         return f'Error loading model: {e}'
 
     # Generate chatbot response
-    response = generator(input_text, max_length=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
+    response = generator(input_text, max_new_tokens=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
     return response
 
 # 2. Terminal
