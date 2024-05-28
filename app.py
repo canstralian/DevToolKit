@@ -1,15 +1,25 @@
 import streamlit as st
 import os
 import subprocess
-import random
-import string
-from huggingface_hub import cached_download, hf_hub_url
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
-import pylint
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from transformers import pipeline
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from pylint import lint
+from io import StringIO
+import openai
+import sys
+
+# Set your OpenAI API key here
+openai.api_key = "YOUR_OPENAI_API_KEY"
+
+PROJECT_ROOT = "projects"
+
+# Global state to manage communication between Tool Box and Workspace Chat App
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'terminal_history' not in st.session_state:
+    st.session_state.terminal_history = []
+if 'workspace_projects' not in st.session_state:
+    st.session_state.workspace_projects = {}
 
 # Define functions for each feature
 
@@ -23,22 +33,36 @@ def chat_interface(input_text):
     Returns:
         The chatbot's response.
     """
-    # Load the appropriate language model from Hugging Face
-    model_name = 'google/flan-t5-xl'  # Choose a suitable model
-    model_url = hf_hub_url(repo_id=model_name, revision='main', filename='config.json')
-    model_path = cached_download(model_url)
-    generator = pipeline('text-generation', model=model_path)
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = "gpt2"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
 
     # Generate chatbot response
-    response = generator(input_text, max_length=50, num_return_sequences=1, do_sample=True)[0]['generated_text']
+    outputs = model.generate(
+        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True
+    )
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
+
 # 2. Terminal
-def terminal_interface(command):
+def terminal_interface(command, project_name=None):
     """Executes commands in the terminal.
 
     Args:
         command: User's command.
+        project_name: Name of the project workspace to add installed packages.
 
     Returns:
         The terminal output.
@@ -47,9 +71,17 @@ def terminal_interface(command):
     try:
         process = subprocess.run(command.split(), capture_output=True, text=True)
         output = process.stdout
+
+        # If the command is to install a package, update the workspace
+        if "install" in command and project_name:
+            requirements_path = os.path.join(PROJECT_ROOT, project_name, "requirements.txt")
+            with open(requirements_path, "a") as req_file:
+                package_name = command.split()[-1]
+                req_file.write(f"{package_name}\n")
     except Exception as e:
-        output = f'Error: {e}'
+        output = f"Error: {e}"
     return output
+
 
 # 3. Code Editor
 def code_editor_interface(code):
@@ -69,13 +101,18 @@ def code_editor_interface(code):
 
     # Lint code using pylint
     try:
-        pylint_output = pylint.run(formatted_code, output=None)
-        lint_results = pylint_output.linter.stats.get('global_note', 0)
-        lint_message = f"Pylint score: {lint_results:.2f}"
+        pylint_output = StringIO()
+        sys.stdout = pylint_output
+        sys.stderr = pylint_output
+        lint.Run(['--from-stdin'], stdin=StringIO(formatted_code))
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        lint_message = pylint_output.getvalue()
     except Exception as e:
         lint_message = f"Pylint error: {e}"
 
     return formatted_code, lint_message
+
 
 # 4. Workspace
 def workspace_interface(project_name):
@@ -87,13 +124,42 @@ def workspace_interface(project_name):
     Returns:
         Project creation status.
     """
+    project_path = os.path.join(PROJECT_ROOT, project_name)
     # Create project directory
     try:
-        os.makedirs(os.path.join('projects', project_name))
-        status = f'Project \"{project_name}\" created successfully.'
+        os.makedirs(project_path)
+        requirements_path = os.path.join(project_path, "requirements.txt")
+        with open(requirements_path, "w") as req_file:
+            req_file.write("")  # Initialize an empty requirements.txt file
+        status = f'Project "{project_name}" created successfully.'
+        st.session_state.workspace_projects[project_name] = {'files': []}
     except FileExistsError:
-        status = f'Project \"{project_name}\" already exists.'
+        status = f'Project "{project_name}" already exists.'
     return status
+
+def add_code_to_workspace(project_name, code, file_name):
+    """Adds selected code files to the workspace.
+
+    Args:
+        project_name: Name of the project.
+        code: Code to be added.
+        file_name: Name of the file to be created.
+
+    Returns:
+        File creation status.
+    """
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    file_path = os.path.join(project_path, file_name)
+
+    try:
+        with open(file_path, "w") as code_file:
+            code_file.write(code)
+        status = f'File "{file_name}" added to project "{project_name}" successfully.'
+        st.session_state.workspace_projects[project_name]['files'].append(file_name)
+    except Exception as e:
+        status = f"Error: {e}"
+    return status
+
 
 # 5. AI-Infused Tools
 
@@ -109,13 +175,78 @@ def summarize_text(text):
     Returns:
         Summarized text.
     """
-    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
-    summary = summarizer(text, max_length=100, min_length=30)[0]['summary_text']
+    # Load the summarization model
+    model_name = "facebook/bart-large-cnn"
+    try:
+        summarizer = pipeline("summarization", model=model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 1024
+    inputs = text
+    if len(text) > max_input_length:
+        inputs = text[:max_input_length]
+
+    # Generate summary
+    summary = summarizer(inputs, max_length=100, min_length=30, do_sample=False)[0][
+        "summary_text"
+    ]
     return summary
+
+# Example: Sentiment analysis tool
+def sentiment_analysis(text):
+    """Performs sentiment analysis on a given text using a Hugging Face model.
+
+    Args:
+        text: Text to be analyzed.
+
+    Returns:
+        Sentiment analysis result.
+    """
+    # Load the sentiment analysis model
+    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    try:
+        analyzer = pipeline("sentiment-analysis", model=model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Perform sentiment analysis
+    result = analyzer(text)[0]
+    return result
+
+# Example: Text translation tool (code translation)
+def translate_code(code, source_language, target_language):
+    """Translates code from one programming language to another using OpenAI Codex.
+
+    Args:
+        code: Code to be translated.
+        source_language: The source programming language.
+        target_language: The target programming language.
+
+    Returns:
+        Translated code.
+    """
+    prompt = f"Translate the following {source_language} code to {target_language}:\n\n{code}"
+    try:
+        response = openai.Completion.create(
+            engine="code-davinci-002",
+            prompt=prompt,
+            max_tokens=1024,
+            temperature=0.3,
+            top_p=1,
+            n=1,
+            stop=None
+        )
+        translated_code = response.choices[0].text.strip()
+    except Exception as e:
+        translated_code = f"Error: {e}"
+    return translated_code
+
 
 # 6. Code Generation
 def generate_code(idea):
-    """Generates code based on a given idea using the bigscience/T0_3B model.
+    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model.
 
     Args:
         idea: The idea for the code to be generated.
@@ -125,9 +256,12 @@ def generate_code(idea):
     """
 
     # Load the code generation model
-    model_name = 'bigscience/T0_3B'  # Choose your model
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model_name = "EleutherAI/gpt-neo-2.7B"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
 
     # Generate the code
     input_text = f"""
@@ -151,119 +285,202 @@ def generate_code(idea):
 
     return generated_code
 
-# 7. Sentiment Analysis
-def analyze_sentiment(text):
-    """Analyzes the sentiment of a given text.
+
+# 7. AI Personas Creator
+def create_persona_from_text(text):
+    """Creates an AI persona from the given text.
 
     Args:
-        text: The text to analyze.
+        text: Text to be used for creating the persona.
 
     Returns:
-        A dictionary containing the sentiment label and score.
+        Persona prompt.
     """
-    model_name = 'distilbert-base-uncased-finetuned-sst-3-literal-labels'
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
-    result = classifier(text)[0]
-    return result
+    persona_prompt = f"""
+As an elite expert developer with the highest level of proficiency in Streamlit, Gradio, and Hugging Face, I possess a comprehensive understanding of these technologies and their applications in web development and deployment. My expertise encompasses the following areas:
 
-# 8. Text Translation
-def translate_text(text, target_language):
-    """Translates a given text to the specified target language.
+Streamlit:
+* In-depth knowledge of Streamlit's architecture, components, and customization options.
+* Expertise in creating interactive and user-friendly dashboards and applications.
+* Proficiency in integrating Streamlit with various data sources and machine learning models.
 
-    Args:
-        text: The text to translate.
-        target_language: The target language code (e.g., 'fr' for French, 'es' for Spanish).
+Gradio:
+* Thorough understanding of Gradio's capabilities for building and deploying machine learning interfaces.
+* Expertise in creating custom Gradio components and integrating them with Streamlit applications.
+* Proficiency in using Gradio to deploy models from Hugging Face and other frameworks.
 
-    Returns:
-        The translated text.
-    """
-    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-es")  # Example: English to Spanish
-    translation = translator(text, target_lang=target_language)[0]['translation_text']
-    return translation
+Hugging Face:
+* Comprehensive knowledge of Hugging Face's model hub and Transformers library.
+* Expertise in fine-tuning and deploying Hugging Face models for various NLP and computer vision tasks.
+* Proficiency in using Hugging Face's Spaces platform for model deployment and sharing.
+
+Deployment:
+* In-depth understanding of best practices for deploying Streamlit and Gradio applications.
+* Expertise in deploying models on cloud platforms such as AWS, Azure, and GCP.
+* Proficiency in optimizing deployment configurations for performance and scalability.
+
+Additional Skills:
+* Strong programming skills in Python and JavaScript.
+* Familiarity with Docker and containerization technologies.
+* Excellent communication and problem-solving abilities.
+
+I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications using Streamlit, Gradio, and Hugging Face. Please feel free to ask any questions or present any challenges you may encounter.
+
+Example:
+
+Task:
+Develop a Streamlit application that allows users to generate text using a Hugging Face model. The application should include a Gradio component for user input and model prediction.
+
+Solution:
+
+import streamlit as st
+import gradio as gr
+from transformers import pipeline
+
+# Create a Hugging Face pipeline
+huggingface_model = pipeline("text-generation")
+
+# Create a Streamlit app
+st.title("Hugging Face Text Generation App")
+
+# Define a Gradio component
+demo = gr.Interface(
+    fn=huggingface_model,
+    inputs=gr.Textbox(lines=2),
+    outputs=gr.Textbox(lines=1),
+)
+
+# Display the Gradio component in the Streamlit app
+st.write(demo)
+"""
+    return persona_prompt
+
 
 # Streamlit App
-st.title("CodeCraft: Your AI-Powered Development Toolkit")
+st.title("AI Personas Creator")
 
-# Workspace Selection
-st.sidebar.header("Select Workspace")
-project_name = st.sidebar.selectbox("Choose a project", os.listdir('projects'))
+# Sidebar navigation
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Personas Creator", "Tool Box", "Workspace Chat App"])
 
-# Chat Interface
-st.header("Chat with CodeCraft")
-chat_input = st.text_area("Enter your message:")
-if st.button("Send"):
-    chat_response = chat_interface(chat_input)
-    st.write(f"CodeCraft: {chat_response}")
+if app_mode == "AI Personas Creator":
+    # AI Personas Creator
+    st.header("Create the System Prompt of an AI Persona from YouTube or Text")
 
-# Terminal Interface
-st.header("Terminal")
-terminal_input = st.text_input("Enter a command:")
-if st.button("Run"):
-    terminal_output = terminal_interface(terminal_input)
-    st.code(terminal_output, language="bash")
+    st.subheader("From Text")
+    text_input = st.text_area("Enter text to create an AI persona:")
+    if st.button("Create Persona"):
+        persona_prompt = create_persona_from_text(text_input)
+        st.subheader("Persona Prompt")
+        st.text_area("You may now copy the text below and use it as Custom prompt!", value=persona_prompt, height=300)
 
-# Code Editor Interface
-st.header("Code Editor")
-code_editor = st.text_area("Write your code:", language="python", height=300)
-if st.button("Format & Lint"):
-    formatted_code, lint_message = code_editor_interface(code_editor)
-    st.code(formatted_code, language="python")
-    st.info(lint_message)
+elif app_mode == "Tool Box":
+    # Tool Box
+    st.header("AI-Powered Tools")
 
-# AI-Infused Tools
-st.header("AI-Powered Tools")
+    # Chat Interface
+    st.subheader("Chat with CodeCraft")
+    chat_input = st.text_area("Enter your message:")
+    if st.button("Send"):
+        chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
 
-# Text Summarization
-st.subheader("Text Summarization")
-text_to_summarize = st.text_area("Enter text to summarize:")
-if st.button("Summarize"):
-    summary = summarize_text(text_to_summarize)
-    st.write(f"Summary: {summary}")
+    # Terminal Interface
+    st.subheader("Terminal")
+    terminal_input = st.text_input("Enter a command:")
+    if st.button("Run"):
+        terminal_output = terminal_interface(terminal_input)
+        st.session_state.terminal_history.append((terminal_input, terminal_output))
+        st.code(terminal_output, language="bash")
 
-# Sentiment Analysis
-st.subheader("Sentiment Analysis")
-text_to_analyze = st.text_area("Enter text to analyze sentiment:")
-if st.button("Analyze Sentiment"):
-    sentiment_result = analyze_sentiment(text_to_analyze)
-    st.write(f"Sentiment: {sentiment_result['label']}, Score: {sentiment_result['score']}")
+    # Code Editor Interface
+    st.subheader("Code Editor")
+    code_editor = st.text_area("Write your code:", height=300)
+    if st.button("Format & Lint"):
+        formatted_code, lint_message = code_editor_interface(code_editor)
+        st.code(formatted_code, language="python")
+        st.info(lint_message)
 
-# Text Translation
-st.subheader("Text Translation")
-text_to_translate = st.text_area("Enter text to translate:")
-target_language = st.selectbox("Choose target language", ['fr', 'es', 'de', 'zh-CN'])  # Example languages
-if st.button("Translate"):
-    translation = translate_text(text_to_translate, target_language)
-    st.write(f"Translation: {translation}")
+    # Text Summarization Tool
+    st.subheader("Summarize Text")
+    text_to_summarize = st.text_area("Enter text to summarize:")
+    if st.button("Summarize"):
+        summary = summarize_text(text_to_summarize)
+        st.write(f"Summary: {summary}")
 
-# Code Generation
-st.header("Code Generation")
-code_idea = st.text_input("Enter your code idea:")
-if st.button("Generate Code"):
-    try:
+    # Sentiment Analysis Tool
+    st.subheader("Sentiment Analysis")
+    sentiment_text = st.text_area("Enter text for sentiment analysis:")
+    if st.button("Analyze Sentiment"):
+        sentiment = sentiment_analysis(sentiment_text)
+        st.write(f"Sentiment: {sentiment}")
+
+    # Text Translation Tool (Code Translation)
+    st.subheader("Translate Code")
+    code_to_translate = st.text_area("Enter code to translate:")
+    source_language = st.text_input("Enter source language (e.g., 'Python'):")
+    target_language = st.text_input("Enter target language (e.g., 'JavaScript'):")
+    if st.button("Translate Code"):
+        translated_code = translate_code(code_to_translate, source_language, target_language)
+        st.code(translated_code, language=target_language.lower())
+
+    # Code Generation
+    st.subheader("Code Generation")
+    code_idea = st.text_input("Enter your code idea:")
+    if st.button("Generate Code"):
         generated_code = generate_code(code_idea)
         st.code(generated_code, language="python")
-    except Exception as e:
-        st.error(f"Error generating code: {e}")
 
-# Launch Chat App (with Authentication)
-if st.button("Launch Chat App"):
-    # Get the current working directory
-    cwd = os.getcwd()
+elif app_mode == "Workspace Chat App":
+    # Workspace Chat App
+    st.header("Workspace Chat App")
 
-    # User Authentication
-hf_token = st.text_input("Enter your Hugging Face Token:")
-if hf_token:
-    # Set the token using HfFolder
-    HfFolder.save_token(hf_token)
+    # Project Workspace Creation
+    st.subheader("Create a New Project")
+    project_name = st.text_input("Enter project name:")
+    if st.button("Create Project"):
+        workspace_status = workspace_interface(project_name)
+        st.success(workspace_status)
 
-    # Construct the command to launch the chat app
-    command = f"cd projects/{project_name} && streamlit run chat_app.py"
+    # Add Code to Workspace
+    st.subheader("Add Code to Workspace")
+    code_to_add = st.text_area("Enter code to add to workspace:")
+    file_name = st.text_input("Enter file name (e.g., 'app.py'):")
+    if st.button("Add Code"):
+        add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
+        st.success(add_code_status)
 
-    # Execute the command
-    try:
-        process = subprocess.run(command.split(), capture_output=True, text=True)
-        st.write(f"Chat app launched successfully!")
-    except Exception as e:
-        st.error(f"Error launching chat app: {e}")
+    # Terminal Interface with Project Context
+    st.subheader("Terminal (Workspace Context)")
+    terminal_input = st.text_input("Enter a command within the workspace:")
+    if st.button("Run Command"):
+        terminal_output = terminal_interface(terminal_input, project_name)
+        st.code(terminal_output, language="bash")
+
+    # Chat Interface for Guidance
+    st.subheader("Chat with CodeCraft for Guidance")
+    chat_input = st.text_area("Enter your message for guidance:")
+    if st.button("Get Guidance"):
+        chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
+
+    # Display Chat History
+    st.subheader("Chat History")
+    for user_input, response in st.session_state.chat_history:
+        st.write(f"User: {user_input}")
+        st.write(f"CodeCraft: {response}")
+
+    # Display Terminal History
+    st.subheader("Terminal History")
+    for command, output in st.session_state.terminal_history:
+        st.write(f"Command: {command}")
+        st.code(output, language="bash")
+
+    # Display Projects and Files
+    st.subheader("Workspace Projects")
+    for project, details in st.session_state.workspace_projects.items():
+        st.write(f"Project: {project}")
+        for file in details['files']:
+            st.write(f"  - {file}")
