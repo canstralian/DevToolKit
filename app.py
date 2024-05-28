@@ -247,10 +247,8 @@ def translate_code(code, source_language, target_language):
 # 6. Code Generation
 def generate_code(idea):
     """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model.
-
     Args:
         idea: The idea for the code to be generated.
-
     Returns:
         The generated code as a string.
     """
@@ -281,7 +279,11 @@ def generate_code(idea):
     generated_code = tokenizer.decode(output_sequences[0], skip_special_tokens=True)
 
     # Remove the prompt and formatting
-    generated_code = generated_code.split("\n# Code:")[1].strip()
+    parts = generated_code.split("\n# Code:")
+    if len(parts) > 1:
+        generated_code = parts[1].strip()
+    else:
+        generated_code = generated_code.strip()
 
     return generated_code
 
