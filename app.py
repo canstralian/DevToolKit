@@ -60,10 +60,7 @@ for message in chat_history:
       st.write(message[1])
 
 # User input area
-user_input = st.text_input("Enter your message or code:", key="input")
-
-# Process user input when Enter is pressed
-if user_input:
+def handle_input(user_input):
   chat_history = chat_with_code(user_input)
 
   # Display updated chat history
@@ -72,5 +69,6 @@ if user_input:
       if message[1]:
         st.write(message[1])
 
-  # Clear the input field
-  st.session_state.input = ""
+  st.session_state.input = ""  # Clear the input field
+
+user_input = st.text_input("Enter your message or code:", key="input", on_change=handle_input)
