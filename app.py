@@ -113,8 +113,21 @@ def summarize_text(text):
     Returns:
         Summarized text.
     """
-    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
-    summary = summarizer(text, max_length=100, min_length=30)[0]['summary_text']
+    # Load the summarization model
+    model_name = 'facebook/bart-large-cnn'
+    try:
+        summarizer = pipeline('summarization', model=model_name)
+    except EnvironmentError as e:
+        return f'Error loading model: {e}'
+
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 1024
+    inputs = text
+    if len(text) > max_input_length:
+        inputs = text[:max_input_length]
+
+    # Generate summary
+    summary = summarizer(inputs, max_length=100, min_length=30, do_sample=False)[0]['summary_text']
     return summary
 
 # 6. Code Generation
