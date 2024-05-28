@@ -5,3 +5,7 @@ torch
 torchvision
 tensorflow
 flax
+gradio
+os
+subprocess
+time
