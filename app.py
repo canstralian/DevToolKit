@@ -10,7 +10,8 @@ import pylint
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers import pipeline
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-from huggingface_hub import cached_download, hf_hub_url, HfFolder
+from huggingface_hub import hf_hub_token
+print(hf_hub_token())
 
 # Define functions for each feature
 
