@@ -1,33 +1,54 @@
 import gradio as gr
-from transformers import pipeline
+import os
+import subprocess
+import time
 
-# Load the text generation pipeline
-pipe = pipeline(
-    "text-generation", 
-    model="MaziyarPanahi/BASH-Coder-Mistral-7B-Mistral-7B-Instruct-v0.2-slerp-GGUF"
-)
+def chat_with_code(history, user_input):
+  """
+  Handles user input and processes it through code interpreter and terminal.
+  """
+  history.append((user_input, None))  # Add user input to history
 
-def generate_bash_code(prompt):
-    """Generates BASH code using the Mistral-7B pipeline."""
-    sequences = pipe(
-        prompt, 
-        max_length=200, 
-        num_return_sequences=1,
-        do_sample=True,  # Enable sampling for more creative output
-        top_k=50,       # Explore a wider range of vocabulary
-        top_p=0.95,      # Control the probability distribution of tokens
-        temperature=0.8   # Adjust temperature for creativity 
-    )
-    return sequences[0]['generated_text']
+  try:
+    # Attempt to execute code
+    if user_input.startswith("```") and user_input.endswith("```"):
+      code = user_input[3:-3].strip()
+      output = execute_code(code)
+    else:
+      # Attempt to execute terminal command
+      output = execute_terminal(user_input)
 
-# Create the Gradio interface
-iface = gr.Interface(
-    fn=generate_bash_code,
-    inputs=gr.Textbox(lines=5, label="Describe what you want your BASH script to do"),
-    outputs=gr.Code(language="bash", label="Generated BASH Code"),
-    title="BASH Coder",
-    description="Generate BASH scripts using a Mistral-7B model.",
-)
+    history[-1] = (user_input, output)  # Update history with output
+  except Exception as e:
+    history[-1] = (user_input, f"Error: {e}")
 
-# Launch the interface
-iface.launch()
+  return history
+
+def execute_code(code):
+  """
+  Executes Python code and returns the output.
+  """
+  try:
+    exec(code)
+  except Exception as e:
+    return f"Error: {e}"
+
+  return "Code executed successfully!"
+
+def execute_terminal(command):
+  """
+  Executes a terminal command and returns the output.
+  """
+  process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  stdout, stderr = process.communicate()
+  output = stdout.decode("utf-8").strip()
+  if stderr:
+    output += f"\nError: {stderr.decode('utf-8').strip()}"
+  return output
+
+# Create Gradio interface
+iface = gr.ChatInterface(chat_with_code, 
+                        title="Code Interpreter & Terminal Chat",
+                        description="Ask questions, write code, and run terminal commands!")
+
+iface.launch(share=True)
