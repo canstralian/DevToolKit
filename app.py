@@ -129,7 +129,7 @@ if st.button("Run"):
 
 # Code Editor Interface
 st.header("Code Editor")
-code_editor = st.code_area("Write your code:", language="python")
+code_editor = st.text_area("Write your code:", language="python", height=300)
 if st.button("Format & Lint"):
     formatted_code, lint_message = code_editor_interface(code_editor)
     st.code(formatted_code, language="python")
