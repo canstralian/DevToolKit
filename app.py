@@ -1,3 +1,4 @@
+
 import streamlit as st
 import os
 import subprocess
@@ -97,7 +98,8 @@ def chat_interface_with_agent(input_text, agent_name):
         input_ids = input_ids[:, :max_input_length]
 
     outputs = model.generate(
-        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True
+        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True,
+        pad_token_id=tokenizer.eos_token_id  # Set pad_token_id to eos_token_id
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
@@ -168,21 +170,24 @@ def sentiment_analysis(text):
 
 def translate_code(code, source_language, target_language):
     prompt = f"Translate this code from {source_language} to {target_language}:\n\n{code}"
-    response = openai.Completion.create(
-        engine="davinci-codex",
-        prompt=prompt,
-        max_tokens=150
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are an expert software developer."},
+            {"role": "user", "content": prompt}
+        ]
     )
-    return response.choices[0].text.strip()
+    return response.choices[0].message['content'].strip()
 
 def generate_code(code_idea):
-    prompt = f"Generate a Python code snippet for the following idea:\n\n{code_idea}"
-    response = openai.Completion.create(
-        engine="davinci-codex",
-        prompt=prompt,
-        max_tokens=150
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are an expert software developer."},
+            {"role": "user", "content": f"Generate a Python code snippet for the following idea:\n\n{code_idea}"}
+        ]
     )
-    return response.choices[0].text.strip()
+    return response.choices[0].message['content'].strip()
 
 st.title("AI Agent Creator")
 
