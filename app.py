@@ -45,7 +45,7 @@ I am confident that I can leverage my expertise to assist you in developing and 
         Autonomous build logic that continues based on the state of chat history and workspace projects.
         """
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
-        summary += "\n\nWorkspace Projects:\n" + "\n.join([f"{p}: {details}" for p, details in workspace_projects.items()])
+        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
