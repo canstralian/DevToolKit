@@ -187,8 +187,24 @@ def sentiment_analysis(text):
     st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
     return sentiment[0]
 
-def translate_code(code, source_language, target_language):
-    prompt = f"Translate this code from {source_language} to {target_language}:\n\n{code}"
+def translate_code(code, input_language, output_language):
+    # Define a dictionary to map programming languages to their corresponding file extensions
+    language_extensions = {
+        # ignore the specific languages right now, and continue to EOF
+    }
+
+    # Add code to handle edge cases such as invalid input and unsupported programming languages
+    if input_language not in language_extensions:
+        raise ValueError(f"Invalid input language: {input_language}")
+    if output_language not in language_extensions:
+        raise ValueError(f"Invalid output language: {output_language}")
+
+    # Use the dictionary to map the input and output languages to their corresponding file extensions
+    input_extension = language_extensions[input_language]
+    output_extension = language_extensions[output_language]
+
+    # Translate the code using the OpenAI API
+    prompt = f"Translate this code from {input_language} to {output_language}:\n\n{code}"
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
@@ -196,6 +212,9 @@ def translate_code(code, source_language, target_language):
             {"role": "user", "content": prompt}
         ]
     )
+    translated_code = response.choices[0].message['content'].strip()
+
+    # Return the translated code
     translated_code = response.choices[0].message['content'].strip()
     st.session_state.current_state['toolbox']['translated_code'] = translated_code
     return translated_code
