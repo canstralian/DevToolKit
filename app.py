@@ -154,11 +154,6 @@ def terminal_interface(command, project_name=None):
         st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
         return result.stderr
 
-# Chat interface using a selected agent
-def chat_interface_with_agent(input_text, agent_name):
-    # ... [rest of the chat_interface_with_agent function] ...
-
-
 def summarize_text(text):
     summarizer = pipeline("summarization")
     summary = summarizer(text, max_length=50, min_length=25, do_sample=False)
@@ -176,9 +171,14 @@ def sentiment_analysis(text):
 def generate_code(code_idea):
     # Replace this with a call to a Hugging Face model or your own logic
     # For example, using a text-generation pipeline:
-    generator = pipeline('text-generation', model='gpt2')
-    generated_code = generator(code_idea, max_length=100, num_return_sequences=1)[0]['generated_text']
+    generator = pipeline('text-generation', model='gpt4o')
+    generated_code = generator(code_idea, max_length=10000, num_return_sequences=1)[0]['generated_text']
+    messages=[
+            {"role": "system", "content": "You are an expert software developer."},
+            {"role": "user", "content": f"Generate a Python code snippet for the following idea:\n\n{code_idea}"}
+        ]
     st.session_state.current_state['toolbox']['generated_code'] = generated_code
+    
     return generated_code
     
 def translate_code(code, input_language, output_language):
