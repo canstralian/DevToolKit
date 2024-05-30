@@ -1,15 +1,10 @@
 import os
-import sys
 import subprocess
 import streamlit as st
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 from pylint import lint
 from io import StringIO
-import openai
-
-# Set your OpenAI API key here
-openai.api_key = "YOUR_OPENAI_API_KEY"
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -159,21 +154,11 @@ def terminal_interface(command, project_name=None):
         st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
         return result.stderr
 
-def code_editor_interface(code):
-    try:
-        formatted_code = black.format_str(code, mode=black.FileMode())
-    except black.NothingChanged:
-        formatted_code = code
-    result = StringIO()
-    sys.stdout = result
-    sys.stderr = result
-    (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
-    sys.stdout = sys.__stdout__
-    sys.stderr = sys.__stderr__
-    lint_message = pylint_stdout.getvalue() + pylint_stderr.getvalue()
-    st.session_state.current_state['toolbox']['formatted_code'] = formatted_code
-    st.session_state.current_state['toolbox']['lint_message'] = lint_message
-    return formatted_code, lint_message
+# Chat interface using a selected agent
+def chat_interface_with_agent(input_text, agent_name):
+    # ... [rest of the chat_interface_with_agent function] ...
+
+# ... [rest of the workspace_interface, add_code_to_workspace, terminal_interface, code_editor_interface functions] ...
 
 def summarize_text(text):
     summarizer = pipeline("summarization")
@@ -187,10 +172,20 @@ def sentiment_analysis(text):
     st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
     return sentiment[0]
 
+# ... [rest of the translate_code function, but remove the OpenAI API call and replace it with your own logic] ...
+
+def generate_code(code_idea):
+    # Replace this with a call to a Hugging Face model or your own logic
+    # For example, using a text-generation pipeline:
+    generator = pipeline('text-generation', model='gpt2')
+    generated_code = generator(code_idea, max_length=100, num_return_sequences=1)[0]['generated_text']
+    st.session_state.current_state['toolbox']['generated_code'] = generated_code
+    return generated_code
+    
 def translate_code(code, input_language, output_language):
     # Define a dictionary to map programming languages to their corresponding file extensions
     language_extensions = {
-        # ignore the specific languages right now, and continue to EOF
+        
     }
 
     # Add code to handle edge cases such as invalid input and unsupported programming languages
