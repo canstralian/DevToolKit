@@ -158,7 +158,6 @@ def terminal_interface(command, project_name=None):
 def chat_interface_with_agent(input_text, agent_name):
     # ... [rest of the chat_interface_with_agent function] ...
 
-# ... [rest of the workspace_interface, add_code_to_workspace, terminal_interface, code_editor_interface functions] ...
 
 def summarize_text(text):
     summarizer = pipeline("summarization")
