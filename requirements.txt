@@ -6,3 +6,4 @@ OpenPrompt
 PyTorch-Tabular
 torch
 nltk
+streamlit
