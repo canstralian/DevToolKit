@@ -1,10 +1,22 @@
 import os
 import subprocess
 import streamlit as st
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-import black
 from pylint import lint
 from io import StringIO
+import streamlit as st
+import os
+import subprocess
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+import black
+    
+Returns:
+        The chatbot's response.
+    """
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = 'gpt2'
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -34,6 +46,7 @@ class AIAgent:
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
         agent_prompt = f"""
+
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
 
