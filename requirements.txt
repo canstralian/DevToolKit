@@ -1,4 +1,12 @@
 transformers
 streamlit
-torch==1.11.0
-black==24.3.1
+torch==1.13.1+cu117  # Replace with the correct version for your system
+torchvision==0.14.1+cu117
+torchaudio==0.13.1+cu117
+black==22.12.0  # Choose a compatible version
+pylint
+opencv-python
+gradio
+cookiecutter
+GitPython
+pytest
