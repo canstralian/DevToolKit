@@ -82,7 +82,7 @@ def chat_interface_with_agent(input_text, agent_name):
 
     model_name = "Bin12345/AutoCoder_S_6.7B"
     try:
-pipe = pipeline("text-generation", model="Bin12345/AutoCoder_S_6.7B")
+    pipe = pipeline("text-generation", model="Bin12345/AutoCoder_S_6.7B")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
     except EnvironmentError as e:
