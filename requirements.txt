@@ -2,3 +2,6 @@ transformers
 torch
 streamlit
 huggingface_hub
+black
+os
+subprocess
