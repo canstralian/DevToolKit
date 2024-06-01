@@ -1,4 +1,4 @@
---no-binary :all:
+--no-cache-dir
 transformers
 datasets
 sentence-transformers
