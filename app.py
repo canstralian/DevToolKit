@@ -5,6 +5,7 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 from pylint import lint
 from io import StringIO
+import openai
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -36,7 +37,6 @@ class AIAgent:
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
@@ -47,6 +47,12 @@ I am confident that I can leverage my expertise to assist you in developing and 
         """
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
+
+        # Implement more sophisticated logic here based on chat history and workspace projects
+        # For example, you could:
+        # - Analyze the chat history to identify the user's goals and suggest relevant actions.
+        # - Check the workspace projects for missing files or dependencies and suggest adding them.
+        # - Use a language model to generate code based on the user's requests.
 
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
