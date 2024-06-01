@@ -10,10 +10,7 @@ def generate(idea):
     Returns:
         The generated code as a string.
     """
-
-    # Load the code generation model
-    model_name = "bigscience/T0_3B"  # Use a model that works for code generation
-    model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+pipe = pipeline("text-generation", model="Bin12345/AutoCoder_S_6.7B")    model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
 
     # Generate the code
