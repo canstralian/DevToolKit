@@ -1,9 +1,4 @@
---no-cache-dir --upgrade pip
 transformers
-datasets
-sentence-transformers
-OpenPrompt
 torch
-nltk
 streamlit
 huggingface_hub
