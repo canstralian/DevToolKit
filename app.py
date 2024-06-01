@@ -98,7 +98,7 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    model_name = "InstructiPhi"
+    model_name = "Codestral-22B-v0.1-GGUF"
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -165,7 +165,7 @@ def sentiment_analysis(text):
 # Text translation tool (code translation)
 def translate_code(code, source_language, target_language):
     # Use a Hugging Face translation model instead of OpenAI
-    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-es")  # Example: English to Spanish
+    translator = pipeline("translation", model="bartowski/Codestral-22B-v0.1-GGUF")  # Example: English to Spanish
     translated_code = translator(code, target_lang=target_language)[0]['translation_text']
     return translated_code
 
