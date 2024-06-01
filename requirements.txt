@@ -3,7 +3,6 @@ transformers
 datasets
 sentence-transformers
 OpenPrompt
-PyTorch-Tabular
 torch
 nltk
 streamlit
