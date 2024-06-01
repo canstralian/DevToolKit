@@ -6,3 +6,4 @@ OpenPrompt
 torch
 nltk
 streamlit
+huggingface_hub
