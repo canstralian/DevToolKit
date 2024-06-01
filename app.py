@@ -98,7 +98,7 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    model_name = "Bin12345/AutoCoder_S_6.7B"
+    model_name = "acecalisto3/InstructiPhi"
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
