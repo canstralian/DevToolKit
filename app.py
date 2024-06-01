@@ -1,22 +1,15 @@
 import os
+import sys
 import subprocess
 import streamlit as st
-from pylint import lint
-from io import StringIO
-import streamlit as st
-import os
-import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
-    
-Returns:
-        The chatbot's response.
-    """
-    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
-    model_name = 'gpt2'
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+from pylint import lint
+from io import StringIO
+import openai
+
+# Set your OpenAI API key here
+openai.api_key = "YOUR_OPENAI_API_KEY"
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -46,10 +39,8 @@ class AIAgent:
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
         agent_prompt = f"""
-
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
@@ -112,7 +103,7 @@ def chat_interface_with_agent(input_text, agent_name):
 
     # Combine the agent prompt with user input
     combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
-
+    
     # Truncate input text to avoid exceeding the model's maximum length
     max_input_length = 900
     input_ids = tokenizer.encode(combined_input, return_tensors="pt")
@@ -167,6 +158,22 @@ def terminal_interface(command, project_name=None):
         st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
         return result.stderr
 
+def code_editor_interface(code):
+    try:
+        formatted_code = black.format_str(code, mode=black.FileMode())
+    except black.NothingChanged:
+        formatted_code = code
+    result = StringIO()
+    sys.stdout = result
+    sys.stderr = result
+    (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+    lint_message = pylint_stdout.getvalue() + pylint_stderr.getvalue()
+    st.session_state.current_state['toolbox']['formatted_code'] = formatted_code
+    st.session_state.current_state['toolbox']['lint_message'] = lint_message
+    return formatted_code, lint_message
+
 def summarize_text(text):
     summarizer = pipeline("summarization")
     summary = summarizer(text, max_length=50, min_length=25, do_sample=False)
@@ -179,34 +186,10 @@ def sentiment_analysis(text):
     st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
     return sentiment[0]
 
-# ... [rest of the translate_code function, but remove the OpenAI API call and replace it with your own logic] ...
-
-def generate_code(code_idea):
-    # Replace this with a call to a Hugging Face model or your own logic
-    # For example, using a text-generation pipeline:
-    generator = pipeline('text-generation', model='gpt4o')
-    generated_code = generator(code_idea, max_length=10000, num_return_sequences=1)[0]['generated_text']
-    messages=[
-            {"role": "system", "content": "You are an expert software developer."},
-            {"role": "user", "content": f"Generate a Python code snippet for the following idea:\n\n{code_idea}"}
-        ]
-    st.session_state.current_state['toolbox']['generated_code'] = generated_code
-
-    return generated_code
-
 def translate_code(code, input_language, output_language):
     # Define a dictionary to map programming languages to their corresponding file extensions
     language_extensions = {
-        "Python": "py",
-        "JavaScript": "js",
-        "Java": "java",
-        "C++": "cpp",
-        "C#": "cs",
-        "Ruby": "rb",
-        "Go": "go",
-        "PHP": "php",
-        "Swift": "swift",
-        "TypeScript": "ts",
+        # ignore the specific languages right now, and continue to EOF
     }
 
     # Add code to handle edge cases such as invalid input and unsupported programming languages
@@ -329,11 +312,11 @@ elif app_mode == "Tool Box":
     # Text Translation Tool (Code Translation)
     st.subheader("Translate Code")
     code_to_translate = st.text_area("Enter code to translate:")
-    input_language = st.text_input("Enter input language (e.g. 'Python'):")
-    output_language = st.text_input("Enter output language (e.g. 'JavaScript'):")
+    source_language = st.text_input("Enter source language (e.g. 'Python'):")
+    target_language = st.text_input("Enter target language (e.g. 'JavaScript'):")
     if st.button("Translate Code"):
-        translated_code = translate_code(code_to_translate, input_language, output_language)
-        st.code(translated_code, language=output_language.lower())
+        translated_code = translate_code(code_to_translate, source_language, target_language)
+        st.code(translated_code, language=target_language.lower())
 
     # Code Generation
     st.subheader("Code Generation")
@@ -406,6 +389,28 @@ elif app_mode == "Workspace Chat App":
     st.subheader("Workspace Projects")
     for project, details in st.session_state.workspace_projects.items():
         st.write(f"Project: {project}")
-        st.write("Files:")
-        for file in details["files"]:
-            st.write(f"- {file}")
+        for file in details['files']:
+            st.write(f"  - {file}")
+
+    # Chat with AI Agents
+    st.subheader("Chat with AI Agents")
+    selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
+    agent_chat_input = st.text_area("Enter your message for the agent:")
+    if st.button("Send to Agent"):
+        agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent)
+        st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
+        st.write(f"{selected_agent}: {agent_chat_response}")
+
+    # Automate Build Process
+    st.subheader("Automate Build Process")
+    if st.button("Automate"):
+        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
+
+# Display current state for debugging
+st.sidebar.subheader("Current State")
+st.sidebar.json(st.session_state.current_state)
