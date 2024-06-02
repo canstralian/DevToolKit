@@ -32,7 +32,7 @@ markdown_with_custom_html(markdown_text, custom_html)
 # Set your Hugging Face API key here
 # hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 # Get Hugging Face token from secrets.toml - this line should already be in the main code
-hf_token = st.secrets["huggingface"]["hf_token"]
+hf_token = st.secrets["huggingface"]["key"]
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
