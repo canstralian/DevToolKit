@@ -98,9 +98,9 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    model_name = "Codestral-22B-v0.1-GGUF"
+    model_name ="MaziyarPanahi/Codestral-22B-v0.1-GGUF"
     try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model = AutoModel.from_pretrained("MaziyarPanahi/Codestral-22B-v0.1-GGUF")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
     except EnvironmentError as e:
