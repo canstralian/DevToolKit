@@ -12,3 +12,4 @@ cookiecutter
 GitPython
 pytest
 faiss-cpu
+huggingface-cli
