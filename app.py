@@ -463,4 +463,3 @@ elif app_mode == "Workspace Chat App":
 def create_space(api, name, description, public, files, entrypoint="launch.py"):
     url = f"{hf_hub_url()}spaces/{name}/prepare-repo"
     headers = {"Authorization": f"Bearer {api.access_token}"}
-    </s>
