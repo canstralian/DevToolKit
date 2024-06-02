@@ -1,12 +1,43 @@
 import os
 import subprocess
 import streamlit as st
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, AutoModel
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, AutoModel, RagRetriever, AutoModelForSeq2SeqLM
 import black
 from pylint import lint
 from io import StringIO
 import openai
 import sys
+import torch
+
+# Load pre-trained RAG retriever
+rag_retriever = RagRetriever.from_pretrained("facebook/rag-base")
+
+# Load pre-trained chat model
+chat_model = AutoModelForSeq2SeqLM.from_pretrained("google/chat-model-base")
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained("google/chat-model-base")
+
+def process_input(user_input):
+    # Input pipeline: Tokenize and preprocess user input
+    input_ids = tokenizer(user_input, return_tensors="pt").input_ids
+    attention_mask = tokenizer(user_input, return_tensors="pt").attention_mask
+
+    # RAG model: Generate response
+    with torch.no_grad():
+        output = rag_retriever(input_ids, attention_mask=attention_mask)
+        response = output.generator_outputs[0].sequences[0]
+
+    # Chat model: Refine response
+    chat_input = tokenizer(response, return_tensors="pt")
+    chat_input["input_ids"] = chat_input["input_ids"].unsqueeze(0)
+    chat_input["attention_mask"] = chat_input["attention_mask"].unsqueeze(0)
+    with torch.no_grad():
+        chat_output = chat_model(**chat_input)
+        refined_response = chat_output.sequences[0]
+
+    # Output pipeline: Return final response
+    return refined_response
 
 # Set your OpenAI API key here
 openai.api_key = "YOUR_OPENAI_API_KEY"
@@ -355,6 +386,7 @@ elif app_mode == "Workspace Chat App":
     file_name = st.text_input("Enter file name (e.g., 'app.py'):")
     if st.button("Add Code"):
         add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
+        st.session_state.terminal_history.append((f"Add Code: {code_to_add}", add_code_status))
         st.success(add_code_status)
 
     # Terminal Interface with Project Context
@@ -362,6 +394,7 @@ elif app_mode == "Workspace Chat App":
     terminal_input = st.text_input("Enter a command within the workspace:")
     if st.button("Run Command"):
         terminal_output = terminal_interface(terminal_input, project_name)
+        st.session_state.terminal_history.append((terminal_input, terminal_output))
         st.code(terminal_output, language="bash")
 
     # Chat Interface for Guidance
