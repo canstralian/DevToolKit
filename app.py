@@ -9,6 +9,9 @@ import openai
 import sys
 import torch
 
+# Set the auth token
+st.set_page_config(hf_token="YOUR_AUTH_TOKEN")
+
 # Load pre-trained RAG retriever
 rag_retriever = RagRetriever.from_pretrained("facebook/rag-base")
 
