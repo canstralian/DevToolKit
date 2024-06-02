@@ -2,16 +2,21 @@ import transformers
 from transformers import pipeline
 
 def generate(idea):
-    """Generates code based on a given idea using the PhiCo-D-Instruk model.
+    """Generates code based on a given idea using the bigscience/T0_3B model.
 
     Args:
         idea: The idea for the code to be generated.
 
-    Returns:
+        Returns:
         The generated code as a string.
     """
-pipe = pipeline("text-generation", model="Bin12345/AutoCoder_S_6.7B")    model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+
+    # Load the code generation model
+    model_name = "bigscience/T0_3B"  # Use a model that works for code generation
+    model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+
+    # Generate the code
 
     # Generate the code
     input_text = f"""
