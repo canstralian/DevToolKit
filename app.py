@@ -10,6 +10,25 @@ import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi
 import base64
 
+# Add the new HTML code below
+custom_html = '''
+<div style='position:fixed;bottom:0;left:0;width:100%;'>
+  <iframe width="100%" scrolling="no" title="CodeGPT Widget" frameborder="0" allowtransparency sandbox="" allowfullscreen="" data-widget-id="c265505c-e667-4af2-b492-291da888ee7c" src="https://widget.codegpt.co/chat-widget.js"></iframe>
+</div>'''
+
+# Update the markdown function to accept custom HTML code
+def markdown_with_custom_html(md, html):
+    md_content = md
+    if html:
+        return f"{md_content}\n\n{html}"
+    else:
+        return md_content
+
+# Usage example:
+markdown_text = "Compare model responses with me!"
+markdown_with_custom_html(markdown_text, custom_html)
+
+
 # Set your Hugging Face API key here
 # hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 # Get Hugging Face token from secrets.toml - this line should already be in the main code
