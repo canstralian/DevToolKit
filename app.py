@@ -100,6 +100,7 @@ def chat_interface_with_agent(input_text, agent_name):
 
     model_name ="MaziyarPanahi/Codestral-22B-v0.1-GGUF"
     try:
+        from transformers import AutoModel, AutoTokenizer  # Import AutoModel here
         model = AutoModel.from_pretrained("MaziyarPanahi/Codestral-22B-v0.1-GGUF")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
