@@ -1,7 +1,7 @@
 import os
 import subprocess
 import streamlit as st
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, AutoModel
 import black
 from pylint import lint
 from io import StringIO
@@ -30,6 +30,15 @@ if 'current_state' not in st.session_state:
         'workspace_chat': {}
     }
 
+# List of top downloaded free code-generative models from Hugging Face Hub
+AVAILABLE_CODE_GENERATIVE_MODELS = [
+    "bigcode/starcoder",  # Popular and powerful
+    "Salesforce/codegen-350M-mono",  # Smaller, good for quick tasks
+    "microsoft/CodeGPT-small",  # Smaller, good for quick tasks
+    "google/flan-t5-xl",  # Powerful, good for complex tasks
+    "facebook/bart-large-cnn",  # Good for text-to-code tasks
+]
+
 class AIAgent:
     def __init__(self, name, description, skills):
         self.name = name
@@ -41,12 +50,11 @@ class AIAgent:
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
 
-    def autonomous_build(self, chat_history, workspace_projects):
+    def autonomous_build(self, chat_history, workspace_projects, project_name, selected_model):
         """
         Autonomous build logic that continues based on the state of chat history and workspace projects.
         """
@@ -65,6 +73,39 @@ I am confident that I can leverage my expertise to assist you in developing and 
 
         # Generate a response based on the analysis
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
+
+        # Ensure project folder exists
+        project_path = os.path.join(PROJECT_ROOT, project_name)
+        if not os.path.exists(project_path):
+            os.makedirs(project_path)
+
+        # Create requirements.txt if it doesn't exist
+        requirements_file = os.path.join(project_path, "requirements.txt")
+        if not os.path.exists(requirements_file):
+            with open(requirements_file, "w") as f:
+                f.write("# Add your project's dependencies here\n")
+
+        # Create app.py if it doesn't exist
+        app_file = os.path.join(project_path, "app.py")
+        if not os.path.exists(app_file):
+            with open(app_file, "w") as f:
+                f.write("# Your project's main application logic goes here\n")
+
+        # Generate GUI code for app.py if requested
+        if "create a gui" in summary.lower():
+            gui_code = generate_code("Create a simple GUI for this application", selected_model)
+            with open(app_file, "a") as f:
+                f.write(gui_code)
+
+        # Run the default build process
+        build_command = "pip install -r requirements.txt && python app.py"
+        try:
+            result = subprocess.run(build_command, shell=True, capture_output=True, text=True, cwd=project_path)
+            st.write(f"Build Output:\n{result.stdout}")
+            if result.stderr:
+                st.error(f"Build Errors:\n{result.stderr}")
+        except Exception as e:
+            st.error(f"Build Error: {e}")
 
         return summary, next_step
 
@@ -170,11 +211,14 @@ def translate_code(code, source_language, target_language):
     translated_code = translator(code, target_lang=target_language)[0]['translation_text']
     return translated_code
 
-def generate_code(code_idea):
-    # Use a Hugging Face code generation model instead of OpenAI
-    generator = pipeline('text-generation', model='bigcode/starcoder')
-    generated_code = generator(code_idea, max_length=1000, num_return_sequences=1)[0]['generated_text']
-    return generated_code
+def generate_code(code_idea, model_name):
+    """Generates code using the selected model."""
+    try:
+        generator = pipeline('text-generation', model=model_name)
+        generated_code = generator(code_idea, max_length=1000, num_return_sequences=1)[0]['generated_text']
+        return generated_code
+    except Exception as e:
+        return f"Error generating code: {e}"
 
 def chat_interface(input_text):
     """Handles general chat interactions with the user."""
@@ -293,6 +337,18 @@ elif app_mode == "Workspace Chat App":
         workspace_status = workspace_interface(project_name)
         st.success(workspace_status)
 
+        # Automatically create requirements.txt and app.py
+        project_path = os.path.join(PROJECT_ROOT, project_name)
+        requirements_file = os.path.join(project_path, "requirements.txt")
+        if not os.path.exists(requirements_file):
+            with open(requirements_file, "w") as f:
+                f.write("# Add your project's dependencies here\n")
+
+        app_file = os.path.join(project_path, "app.py")
+        if not os.path.exists(app_file):
+            with open(app_file, "w") as f:
+                f.write("# Your project's main application logic goes here\n")
+
     # Add Code to Workspace
     st.subheader("Add Code to Workspace")
     code_to_add = st.text_area("Enter code to add to workspace:")
@@ -344,11 +400,22 @@ elif app_mode == "Workspace Chat App":
         st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
         st.write(f"{selected_agent}: {agent_chat_response}")
 
+    # Code Generation
+    st.subheader("Code Generation")
+    code_idea = st.text_input("Enter your code idea:")
+
+    # Model Selection Menu
+    selected_model = st.selectbox("Select a code-generative model", AVAILABLE_CODE_GENERATIVE_MODELS)
+
+    if st.button("Generate Code"):
+        generated_code = generate_code(code_idea, selected_model)
+        st.code(generated_code, language="python")
+
     # Automate Build Process
     st.subheader("Automate Build Process")
     if st.button("Automate"):
         agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name, selected_model)
         st.write("Autonomous Build Summary:")
         st.write(summary)
         st.write("Next Step:")
