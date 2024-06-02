@@ -24,7 +24,7 @@ def markdown_with_custom_html(md, html):
     else:
         return md_content
 
-# Usage example:
+
 markdown_text = "Compare model responses with me!"
 markdown_with_custom_html(markdown_text, custom_html)
 
@@ -32,7 +32,7 @@ markdown_with_custom_html(markdown_text, custom_html)
 # Set your Hugging Face API key here
 # hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 # Get Hugging Face token from secrets.toml - this line should already be in the main code
-hf_token = st.secrets["huggingface"]["hf_token"]
+hf_token = st.secrets.key["huggingface"]["hf_token"]
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -360,7 +360,7 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 # Get Hugging Face token from secrets.toml
-hf_token = st.secrets["huggingface"]["hf_token"]
+hf_token = st.secrets.key["huggingface"]["hf_token"]
 
 if app_mode == "AI Agent Creator":
     # AI Agent Creator
