@@ -11,4 +11,4 @@ gradio
 cookiecutter
 GitPython
 pytest
-faiss
+faiss-cpu
