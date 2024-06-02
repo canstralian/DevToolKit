@@ -561,12 +561,12 @@ def add_file_to_dictionary(files, file_path):
     
     # Using the modified and extended class and functions, update the callback for the 'Automate' button in the Streamlit UI:
     if st.button("Automate", args=(hf_token,)):
-    agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-    summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name, selected_model, hf_token)
-    st.write("Autonomous Build Summary:")
-    st.write(summary)
-    st.write("Next Step:")
-    st.write(next_step)
+        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name, selected_model, hf_token)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
 
     # If everything went well, proceed to deploy the Space
     if agent._hf_api and agent.has_valid_hf_token():
