@@ -8,39 +8,7 @@ from io import StringIO
 import openai
 import sys
 import torch
-
-# Set the auth token
-st.set_page_config(hf_token="YOUR_AUTH_TOKEN")
-
-# Load pre-trained RAG retriever
-rag_retriever = RagRetriever.from_pretrained("facebook/rag-base")
-
-# Load pre-trained chat model
-chat_model = AutoModelForSeq2SeqLM.from_pretrained("google/chat-model-base")
-
-# Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained("google/chat-model-base")
-
-def process_input(user_input):
-    # Input pipeline: Tokenize and preprocess user input
-    input_ids = tokenizer(user_input, return_tensors="pt").input_ids
-    attention_mask = tokenizer(user_input, return_tensors="pt").attention_mask
-
-    # RAG model: Generate response
-    with torch.no_grad():
-        output = rag_retriever(input_ids, attention_mask=attention_mask)
-        response = output.generator_outputs[0].sequences[0]
-
-    # Chat model: Refine response
-    chat_input = tokenizer(response, return_tensors="pt")
-    chat_input["input_ids"] = chat_input["input_ids"].unsqueeze(0)
-    chat_input["attention_mask"] = chat_input["attention_mask"].unsqueeze(0)
-    with torch.no_grad():
-        chat_output = chat_model(**chat_input)
-        refined_response = chat_output.sequences[0]
-
-    # Output pipeline: Return final response
-    return refined_response
+from huggingface_hub import hf_hub_url, cached_download, HfApi
 
 # Set your OpenAI API key here
 openai.api_key = "YOUR_OPENAI_API_KEY"
@@ -290,6 +258,9 @@ st.title("AI Agent Creator")
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
+# Get Hugging Face token from secrets.toml
+hf_token = st.secrets["huggingface"]["hf_token"]
+
 if app_mode == "AI Agent Creator":
     # AI Agent Creator
     st.header("Create an AI Agent from Text")
@@ -456,3 +427,7 @@ elif app_mode == "Workspace Chat App":
         st.write(summary)
         st.write("Next Step:")
         st.write(next_step)
+
+        # Use the hf_token to interact with the Hugging Face API
+        api = HfApi(token=hf_token)
+        # ... (your logic to deploy the Space using the API)
