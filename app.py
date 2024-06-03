@@ -34,7 +34,7 @@ markdown_with_custom_html(markdown_text, custom_html)
 # Set your Hugging Face API key here
 # hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 # Get Hugging Face token from secrets.toml - this line should already be in the main code
-hf_token = "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"
+HF_TOKEN = os.environ.get("huggingface")
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -362,7 +362,7 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 # Get Hugging Face token from secrets.toml
-hf_token = st.secrets["huggingface"]["hf_token"]
+hf_token = st.secrets["huggingface"]
 
 if app_mode == "AI Agent Creator":
     # AI Agent Creator
@@ -593,7 +593,7 @@ def add_file_to_dictionary(files, file_path):
     if agent._hf_api and agent.has_valid_hf_token():
         agent.deploy_built_space_to_hf() 
         # Use the hf_token to interact with the Hugging Face API
-        api = HfApi(token=hf_token)
+        api = HfApi(token="hf_token")
         # Function to create a Space on Hugging Face
 def create_space(api, name, description, public, files, entrypoint="launch.py"):
     url = f"{hf_hub_url()}spaces/{name}/prepare-repo"
