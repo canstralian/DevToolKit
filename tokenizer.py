@@ -1,4 +1,7 @@
 from transformers import pipeline
+from huggingface_hub import hf_hub_url, cached_download, HfApi
+
+HF_TOKEN = os.environ.get("HF_TOKEN", None)
 
 def generate_code_from_model(input_text):
     """Generates code using the bigscience/T0_3B model."""
