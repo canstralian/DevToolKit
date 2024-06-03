@@ -10,6 +10,8 @@ import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi
 import base64
 
+HF_TOKEN = os.environ.get("HF_TOKEN", None)
+
 # Add the new HTML code below
 custom_html = '''
 <div style='position:fixed;bottom:0;left:0;width:100%;'>
@@ -217,10 +219,10 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    model_name ="MaziyarPanahi/Codestral-22B-v0.1-GGUF"
+    model_name ="bigscience/T0_3B"
     try:
         from transformers import AutoModel, AutoTokenizer  # Import AutoModel here
-        model = AutoModel.from_pretrained("MaziyarPanahi/Codestral-22B-v0.1-GGUF")
+        model = ("bigscience/T0_3B")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
     except EnvironmentError as e:
