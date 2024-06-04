@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, AutoModel, RagRetriever, AutoModelForSeq2SeqLM
 import black
@@ -9,17 +8,13 @@ import sys
 import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi, InferenceClient
 import base64
+import streamlit as st
 
-# Set environment variable for Hugging Face token
-os.environ["HUGGINGFACE_TOKEN"] = "your_token_here"
+# Use a publicly available model that doesn't require authentication
+rag_retriever = pipeline("retrieval-question-answering", model="distilbert-base-nq")
 
-# Load .env file to set additional environment variables
-load_dotenv()
+st.write("Pipeline created successfully")
 
-# Use the HUGGINGFACE_TOKEN in your code
-HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-print(HUGGINGFACE_TOKEN)
-r
 # Add the new HTML code below
 custom_html = '''
 <div style='position:fixed;bottom:0;left:0;width:100%;'>
@@ -73,7 +68,7 @@ AVAILABLE_CODE_GENERATIVE_MODELS = [
 ]
 
 # Load pre-trained RAG retriever
-rag_retriever = RagRetriever.from_pretrained("facebook/rag-token-base")  # Use a Hugging Face RAG model
+# rag_retriever = RagRetriever.from_pretrained("facebook/rag-token-base")  # Use a Hugging Face RAG model
 
 # Load pre-trained chat model
 chat_model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/DialoGPT-medium")  # Use a Hugging Face chat model
@@ -244,7 +239,7 @@ def chat_interface_with_agent(input_text, agent_name):
         input_ids = input_ids[:, :max_input_length]
 
     outputs = model.generate(
-        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True,
+        input_ids, max_new_tokens=1000, num_return_sequences=1, do_sample=True,
         pad_token_id=tokenizer.eos_token_id  # Set pad_token_id to eos_token_id
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
