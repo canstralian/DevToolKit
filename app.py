@@ -7,11 +7,19 @@ from pylint import lint
 from io import StringIO
 import sys
 import torch
-from huggingface_hub import hf_hub_url, cached_download, HfApi
+from huggingface_hub import hf_hub_url, cached_download, HfApi, InferenceClient
 import base64
 
-HF_TOKEN = os.environ.get("HF_TOKEN", None)
+# Set environment variable for Hugging Face token
+os.environ["HUGGINGFACE_TOKEN"] = "your_token_here"
 
+# Load .env file to set additional environment variables
+load_dotenv()
+
+# Use the HUGGINGFACE_TOKEN in your code
+HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+print(HUGGINGFACE_TOKEN)
+r
 # Add the new HTML code below
 custom_html = '''
 <div style='position:fixed;bottom:0;left:0;width:100%;'>
@@ -34,7 +42,7 @@ markdown_with_custom_html(markdown_text, custom_html)
 # Set your Hugging Face API key here
 # hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 # Get Hugging Face token from secrets.toml - this line should already be in the main code
-HF_TOKEN = os.environ.get("huggingface")
+hf_token = os.environ.get("HUGGINGFACE_TOKEN")("key")
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -593,7 +601,7 @@ def add_file_to_dictionary(files, file_path):
     if agent._hf_api and agent.has_valid_hf_token():
         agent.deploy_built_space_to_hf() 
         # Use the hf_token to interact with the Hugging Face API
-        api = HfApi(token="hf_token")
+        api = HfApi(token="HUGGINGFACE_TOKEN")
         # Function to create a Space on Hugging Face
 def create_space(api, name, description, public, files, entrypoint="launch.py"):
     url = f"{hf_hub_url()}spaces/{name}/prepare-repo"
