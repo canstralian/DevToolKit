@@ -13,5 +13,4 @@ GitPython
 pytest
 faiss-cpu
 huggingface-cli
-os
 huggingface_hub
