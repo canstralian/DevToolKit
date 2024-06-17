@@ -82,7 +82,7 @@ def create_interface_from_input(input_str):
             functions = [getattr(module, name) for name in dir(module) if callable(getattr(module, name))]
 
         function_list = [(func.__name__, func) for func in functions if not func.__name__.startswith("_")]
-        return function_list, f"Interface for `{package_name}` created."
+        return function_list, f"'"Interface for `{package_name}` created."'"
 
     except Exception as e:
         return [], str(e)
@@ -95,10 +95,7 @@ def execute_pip_command(command, add_message):
         if output == '' and process.poll() is not None:
             break
         if output:
-            add_message("System", f"'"
-
-
-\n{output.strip()}\n
+            add_message("System", f"'"\n{output.strip()}\n"'"
 
 time.sleep(0.1)  # Simulate delay for more realistic streaming
     rc = process.poll()
