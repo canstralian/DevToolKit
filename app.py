@@ -141,7 +141,7 @@ def generate_mini_app_ideas(theme):
 
 def generate_app_code(app_name, app_description, model_name, history):
     """Generates code for the selected mini-app using the specified GGUF model."""
-    prompt = f"Write a Python script for a {app_description} named {app_name} using Gradio and Streamlit:"
+    prompt = f"'"Write a Python script for a {app_description} named {app_name} using Gradio and Streamlit:"'"
     agent = get_agent(model_name)
     generated_code = agent.chat(prompt, history)
     return generated_code
@@ -156,11 +156,11 @@ def execute_terminal_command(command):
 
 def install_package(package_name):
     """Installs a package using pip."""
-    output, error = execute_terminal_command(f"pip install {package_name}")
+    output, error = execute_terminal_command(f"'""pip install {package_name}"'")
     if error:
-        return f"Error installing package: {error}"
+        return f"'"Error installing package: {error}"'"
     else:
-        return f"Package `{package_name}` installed successfully."
+        return f"'"Package `{package_name}` installed successfully."'"
 
 def get_project_data():
     """Returns the current project data."""
@@ -179,7 +179,7 @@ def handle_chat(input_text, history):
 
     if input_text.startswith("pip install ") or input_text.startswith("https://pypi.org/project/"):
         package_name = extract_package_name(input_text)
-        add_message("System", f"Installing `{package_name}`...")
+        add_message("System", f"'"Installing `{package_name}`...")"'"
         result = install_package(package_name)
         add_message("System", result)
         update_project_data("packages", CURRENT_PROJECT.get("packages", []) + [package_name])
@@ -192,15 +192,15 @@ def handle_chat(input_text, history):
     elif not MINI_APPS:
         add_message("System", "Here are some ideas:")
         for idea in generate_mini_app_ideas(input_text):
-            add_message("System", f"- {idea}")
+            add_message("System", f"'"- {idea}"'")
         add_message("System", "Which one would you like to build?")
     elif CURRENT_APP["name"] is None:
         selected_app = input_text
         app_description = next((app for app in MINI_APPS if selected_app in app), None)
         if app_description:
-            add_message("System", f"Generating code for {app_description}...")
+            add_message("System", f"'"Generating code for {app_description}..."'")
             code = generate_app_code(selected_app, app_description, "CodeQwen", history)  # Use CodeQwen by default
-            add_message("System", f"
+            add_message("System", f"'"
 
 
 python\n{code}\n
