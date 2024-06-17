@@ -202,10 +202,7 @@ def handle_chat(input_text, history):
         if app_description:
             add_message("System", f"'"Generating code for {app_description}..."'")
             code = generate_app_code(selected_app, app_description, "CodeQwen", history)  # Use CodeQwen by default
-            add_message("System", f"'"
-
-
-python\n{code}\n
+            add_message("System", f"'"python {code}
 
 add_message("System", "Code generated! What else can I do for you?")
             update_project_data("code", code)
@@ -222,10 +219,7 @@ add_message("System", "Code generated! What else can I do for you?")
 def generate_code_tool(input_text, history):
     """Prebuilt tool for code generation."""
     code = generate_app_code("MyTool", "A tool to do something", "CodeQwen", history)  # Use CodeQwen by default
-    return f"
-
-
-python\n{code}\n
+    return f"'"python\n{code}\n"'"
 
 def analyze_code_tool(input_text, history):
     """Prebuilt tool for code analysis."""
@@ -247,7 +241,7 @@ chat_input = st.text_input("Tell me your idea...", key="chat_input")
 if chat_input:
     chat_history, dynamic_functions = handle_chat(chat_input, chat_history)
     for sender, message in chat_history:
-        st.markdown(f"**{sender}:** {message}")
+        st.markdown(f"'"**{sender}:** {message}"'")
 
 # --- Code Execution and Deployment ---
 if CURRENT_APP["code"]:
@@ -266,9 +260,9 @@ if CURRENT_APP["code"]:
             inputs = tokenizer(code_area, return_tensors="pt")
             output = model.generate(**inputs, max_length=500, num_return_sequences=1)
             output = tokenizer.decode(output[0], skip_special_tokens=True)
-            st.success(f"'"Code executed successfully!{output}"'")
+            st.success(f"'"Code executed successfully!{output}")
         except Exception as e:
-            st.error(f"'"Error executing code: {e}"'")
+            st.error(f"'"Error executing code: {e}")
 
     # --- Code Editing ---
     st.markdown("## Edit Your Code:")
@@ -279,10 +273,7 @@ if CURRENT_APP["code"]:
 
 inputs = tokenizer(prompt, return_tensors="pt")
             output = model.generate(**inputs, max_length=500, num_return_sequences=1)
-            edited_code = tokenizer.decode(output[0], skip_special_tokens=True).split("
-
-
-python\n")[1].split("\n
+            edited_code = tokenizer.decode(output[0], skip_special_tokens=True).split("[python [1].split("
 
 st.success(f"'"Code edited successfully!\n{edited_code}"'"")            
             update_project_data("code", edited_code)
