@@ -158,7 +158,7 @@ def execute_terminal_command(command):
 
 def install_package(package_name):
     """Installs a package using pip."""
-    output, error = execute_terminal_command(f"'""pip install {package_name}"'")
+    output, error = execute_terminal_command(f"'"pip install {package_name}"'")
     if error:
         return f"'"Error installing package: {error}"'"
     else:
