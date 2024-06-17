@@ -13,6 +13,7 @@ from llama_cpp.llama_cpp_agent import get_messages_formatter_type, get_context_b
 from io import StringIO
 import tempfile
 
+
 # --- Global Variables ---
 CURRENT_PROJECT = {}  # Store project data (code, packages, etc.)
 MODEL_OPTIONS = {
