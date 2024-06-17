@@ -101,7 +101,7 @@ def execute_pip_command(command, add_message):
             break
         if output:
             # Corrected line: Combine the f-string parts
-            add_message("System", f"\n{output.strip()}\n")
+            add_message("System", f"'"{output.strip()}"'")
             time.sleep(0.1)  # Simulate delay for more realistic streaming
     rc = process.poll()
     return rc
@@ -266,19 +266,16 @@ if CURRENT_APP["code"]:
             inputs = tokenizer(code_area, return_tensors="pt")
             output = model.generate(**inputs, max_length=500, num_return_sequences=1)
             output = tokenizer.decode(output[0], skip_special_tokens=True)
-            st.success(f"Code executed successfully!\n{output}")
+            st.success(f"'"Code executed successfully!{output}"'")
         except Exception as e:
-            st.error(f"Error executing code: {e}")
+            st.error(f"'"Error executing code: {e}"'")
 
     # --- Code Editing ---
     st.markdown("## Edit Your Code:")
     if st.button("Edit Code"):
         try:
             # Use Hugging Face's text-generation pipeline for code editing
-            prompt = f"Improve the following Python code:\n
-
-
-python\n{code_area}\n
+            prompt = f"'"Improve the following Python code: python {code_area}"'"
 
 inputs = tokenizer(prompt, return_tensors="pt")
             output = model.generate(**inputs, max_length=500, num_return_sequences=1)
@@ -287,11 +284,11 @@ inputs = tokenizer(prompt, return_tensors="pt")
 
 python\n")[1].split("\n
 
-st.success(f"Code edited successfully!\n{edited_code}")
+st.success(f"'"Code edited successfully!\n{edited_code}"'"")            
             update_project_data("code", edited_code)
             code_area.value = edited_code
         except Exception as e:
-            st.error(f"Error editing code: {e}")
+            st.error(f"'"Error editing code: {e}")
 
 # --- Prebuilt Tools ---
 st.markdown("## Prebuilt Tools:")
