@@ -95,7 +95,7 @@ def execute_pip_command(command, add_message):
         if output == '' and process.poll() is not None:
             break
         if output:
-            add_message("System", f"
+            add_message("System", f"'"
 
 
 \n{output.strip()}\n
