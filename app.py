@@ -13,7 +13,6 @@ from llama_cpp.llama_cpp_agent import get_messages_formatter_type, get_context_b
 from io import StringIO
 import tempfile
 
-
 # --- Global Variables ---
 CURRENT_PROJECT = {}  # Store project data (code, packages, etc.)
 MODEL_OPTIONS = {
@@ -49,8 +48,14 @@ if 'current_state' not in st.session_state:
 classifier = pipeline("text-classification", model="facebook/bart-large-mnli")
 
 # --- Load the model and tokenizer ---
-model = AutoModelForCausalLM.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1", use_auth_token=os.environ.get("huggingface_token"))
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1", use_auth_token=os.environ.get("huggingface_token"))
+model = AutoModelForCausalLM.from_pretrained(
+    "mistralai/Mixtral-8x7B-Instruct-v0.1", 
+    use_auth_token=os.environ.get("huggingface_token")
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    "mistralai/Mixtral-8x7B-Instruct-v0.1", 
+    use_auth_token=os.environ.get("huggingface_token")
+)
 
 # --- Utility Functions ---
 def install_and_import(package_name):
@@ -82,7 +87,7 @@ def create_interface_from_input(input_str):
             functions = [getattr(module, name) for name in dir(module) if callable(getattr(module, name))]
 
         function_list = [(func.__name__, func) for func in functions if not func.__name__.startswith("_")]
-        return function_list, f"'"Interface for `{package_name}` created."'"
+        return function_list, f"Interface for `{package_name}` created."
 
     except Exception as e:
         return [], str(e)
@@ -95,9 +100,9 @@ def execute_pip_command(command, add_message):
         if output == '' and process.poll() is not None:
             break
         if output:
-            add_message("System", f"'"\n{output.strip()}\n"'"
-
-time.sleep(0.1)  # Simulate delay for more realistic streaming
+            # Corrected line: Combine the f-string parts
+            add_message("System", f"\n{output.strip()}\n")
+            time.sleep(0.1)  # Simulate delay for more realistic streaming
     rc = process.poll()
     return rc
 
