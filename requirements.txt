@@ -10,7 +10,6 @@ opencv-python
 gradio
 cookiecutter
 GitPython
-pytest
-faiss-cpu
+pytest==7.2.1
+faiss-cpu==1.7.2
 huggingface-cli
-huggingface_hub
