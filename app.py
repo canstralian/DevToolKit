@@ -101,7 +101,7 @@ def execute_pip_command(command, add_message):
             break
         if output:
             # Corrected line: Combine the f-string parts
-            add_message("System", f"'"{output.strip()}"'")
+            add_message("System", f"'"{output.strip()}")
             time.sleep(0.1)  # Simulate delay for more realistic streaming
     rc = process.poll()
     return rc
@@ -143,7 +143,7 @@ def generate_mini_app_ideas(theme):
 
 def generate_app_code(app_name, app_description, model_name, history):
     """Generates code for the selected mini-app using the specified GGUF model."""
-    prompt = f"'"Write a Python script for a {app_description} named {app_name} using Gradio and Streamlit:"'"
+    prompt = f"'"Write a Python script for a {app_description} named {app_name} using Gradio and Streamlit:"
     agent = get_agent(model_name)
     generated_code = agent.chat(prompt, history)
     return generated_code
@@ -158,11 +158,11 @@ def execute_terminal_command(command):
 
 def install_package(package_name):
     """Installs a package using pip."""
-    output, error = execute_terminal_command(f"'"pip install {package_name}"'")
+    output, error = execute_terminal_command(f"'"pip install {package_name}")
     if error:
-        return f"'"Error installing package: {error}"'"
+        return f"'"Error installing package: {error}"
     else:
-        return f"'"Package `{package_name}` installed successfully."'"
+        return f"'"Package `{package_name}` installed successfully."
 
 def get_project_data():
     """Returns the current project data."""
@@ -181,7 +181,7 @@ def handle_chat(input_text, history):
 
     if input_text.startswith("pip install ") or input_text.startswith("https://pypi.org/project/"):
         package_name = extract_package_name(input_text)
-        add_message("System", f"'"Installing `{package_name}`...")"'"
+        add_message("System", f"'"Installing `{package_name}`...")
         result = install_package(package_name)
         add_message("System", result)
         update_project_data("packages", CURRENT_PROJECT.get("packages", []) + [package_name])
@@ -194,15 +194,18 @@ def handle_chat(input_text, history):
     elif not MINI_APPS:
         add_message("System", "Here are some ideas:")
         for idea in generate_mini_app_ideas(input_text):
-            add_message("System", f"'"- {idea}"'")
+            add_message("System", f"'"-{idea}")
         add_message("System", "Which one would you like to build?")
     elif CURRENT_APP["name"] is None:
         selected_app = input_text
         app_description = next((app for app in MINI_APPS if selected_app in app), None)
         if app_description:
-            add_message("System", f"'"Generating code for {app_description}..."'")
+            add_message("System", f"'"Generating code for {app_description}...")
             code = generate_app_code(selected_app, app_description, "CodeQwen", history)  # Use CodeQwen by default
-            add_message("System", f"'"python {code}
+            add_message("System", f"'"
+
+
+python\n{code}\n
 
 add_message("System", "Code generated! What else can I do for you?")
             update_project_data("code", code)
@@ -219,7 +222,7 @@ add_message("System", "Code generated! What else can I do for you?")
 def generate_code_tool(input_text, history):
     """Prebuilt tool for code generation."""
     code = generate_app_code("MyTool", "A tool to do something", "CodeQwen", history)  # Use CodeQwen by default
-    return f"'"python\n{code}\n"'"
+    return f"'" python {code}"
 
 def analyze_code_tool(input_text, history):
     """Prebuilt tool for code analysis."""
@@ -241,7 +244,7 @@ chat_input = st.text_input("Tell me your idea...", key="chat_input")
 if chat_input:
     chat_history, dynamic_functions = handle_chat(chat_input, chat_history)
     for sender, message in chat_history:
-        st.markdown(f"'"**{sender}:** {message}"'")
+        st.markdown(f"**{sender}:** {message}")
 
 # --- Code Execution and Deployment ---
 if CURRENT_APP["code"]:
@@ -269,13 +272,16 @@ if CURRENT_APP["code"]:
     if st.button("Edit Code"):
         try:
             # Use Hugging Face's text-generation pipeline for code editing
-            prompt = f"'"Improve the following Python code: python {code_area}"'"
+            prompt = f"'"Improve the following Python code: python {code_area}"
 
 inputs = tokenizer(prompt, return_tensors="pt")
             output = model.generate(**inputs, max_length=500, num_return_sequences=1)
-            edited_code = tokenizer.decode(output[0], skip_special_tokens=True).split("[python [1].split("
+            edited_code = tokenizer.decode(output[0], skip_special_tokens=True).split("
 
-st.success(f"'"Code edited successfully!\n{edited_code}"'"")            
+
+python\n")[1].split("\n
+
+st.success(f"'"Code edited successfully!\n{edited_code}")            
             update_project_data("code", edited_code)
             code_area.value = edited_code
         except Exception as e:
