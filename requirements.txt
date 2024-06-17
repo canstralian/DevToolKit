@@ -1,6 +1,6 @@
 transformers==4.41.2
 streamlit==1.26.0
-openai
+huggingface_hub
 torch
 torchvision
 torchaudio
@@ -12,4 +12,4 @@ cookiecutter
 GitPython
 pytest==7.2.1
 faiss-cpu==1.7.2
-huggingface-cli
+huggingface_cli
