@@ -1,0 +1,2 @@
+Agent Name: GoatCode
+Description: AI agent created from text input.
