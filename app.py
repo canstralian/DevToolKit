@@ -337,4 +337,8 @@ with gr.Blocks(theme='ParityError/Interstellar') as demo:
         additional_inputs=additional_inputs,
     )
 
-demo.queue().launch(debug=True)
+from gradio import Blocks
+
+app = gr.Blocks(analytics_enabled=False, title="Test")
+
+app.launch(share=True,)
