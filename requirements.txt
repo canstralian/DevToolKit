@@ -5,3 +5,6 @@ gradio
 black
 pylint
 ipython
+torch
+tensorflow
+flax
