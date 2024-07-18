@@ -1,6 +1,5 @@
 absl-py
 albumentations
-Faster-RCNN
 deepsort
 easydict
 gradio
