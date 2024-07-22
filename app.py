@@ -88,16 +88,12 @@ _project(project_name: str, project_path: str = DEFAULT_PROJECTPATH):
         # Create the repository
         repo = Repository(local_dir=project_path, clone_from=None)
         repo.git_init()
-
         # Add basic filesoptional, can customize this)        with open(path.join(_path, "README.md"), "w") as f: f.write(f {project_name}\n\nA new Face project.")
-
         # Stage all changes        repo.git_add(pattern="*")
         repo.git_commit(commit_message="Initial commit")
-
         return f"""Hugging Face project '{project_name}' created successfully at '{project_path}'"""
     except Exception as e:
         return f"""Error creating Hugging Face project: {str(e)}"""
-
 def list(project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Lists files in the project directory."""
     try:
@@ -107,7 +103,6 @@ def list(project_path: str = DEFAULT_PROJECT_PATH) -> str:
         return "\n".join(files)
     except Exception as e:        
         return f"""Error listing project {str()}"""
-
 def read_file(filepath: str, project_path: str = DEFAULT_PROPATH) -> str """Reads and returns the content of a file in the project."""
     try:
 _path = os.path.join(project_path, file_path)
@@ -125,7 +120,6 @@ def write_file(file_: str, content str project_path str =PROJECT_PATH:
         return"Successfully wrote to '{_path}'"
     except Exception as e:
         return f"""Error writing to file: {str(e)}"""
-
 def preview(project_path: str = DEFAULT_PROJECT_PATH):
     """Provides a preview of the project, if applicable."""
     # Assuming a simple HTML preview for now
@@ -140,7 +134,6 @@ def preview(project_path: str = DEFAULT_PROJECT_PATH):
             return "No 'index.html' found for preview."
     except Exception as e:
         return f """preview project: {str(e)}"""
-
 def main():
   .Blocks() as demo:
         gr.Markdown("## IDEvIII: Your Hugging No- App Builder")
@@ -156,7 +149,6 @@ def main():
             load_button = gr.Button("Load Model")
             load_output = gr.Textbox(label="Output")
             model_description = gr.Markdown(label="Model Description")
-
             # --- Function to pop model names category ---
  update_modeldropdown(category):
                 models = []
@@ -164,7 +156,6 @@ def main():
                 for model in api.list_models():
                     if model.pipeline_tag ==
                         models.append(model.modelId)  return gr.Dropdown.update(choices=models)
-
             # --- Event handler for category dropdown ---
             model_categories.change(
                 fn=update_model_                inputs=model_categories,
@@ -177,13 +168,11 @@ def main():
                     return model_descriptions[modelname]
                 else:
                     return "Model description available."
-
             model_name.change(
                =display_model_description,
                 inputs=model_name,
                 outputs=model_description,
             )
-
             # --- Event handler to load the selected model ---
             def load_selected_model(model_name):
                 global current_model
@@ -192,9 +181,7 @@ def main():
                     return f"""Model '{model_name}' loaded successfully!"""
                 else:
                     return f"""Error loading model '{model_name}'"""
-
             load_button.click(load_selected_model, inputs=model_name, outputs=load_output)
-
         # --- Chat Interface ---
         with gr.Tab("Chat
             chatbot gr.Chatbot(show_label=False, show_share_button=False_copy_button, likeable)
@@ -207,21 +194,17 @@ def main():
             repetition_penalty = gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY minimum=1., maximum=2.0,=0.05, interactive=True, info="Penalize repeated tokens")
             submit_button = gr.Button(value="Send")
             history = gr.State([])
-
             run_chat(purpose: str, message: str, agent_name str, sys_prompt: str, temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float, history: List[Tuple[str, str]]) -> Tuple[List[Tuple[str,]], List[[str, str]]]:
                 if not current_model:
                     return [(history, history), "Please load a model first."]
-
             def generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top, repetition_penalty):
                 if not current_model:
                     return "Please load a model first."
-
                 conversation = [{"role": "system", "content sys_pt}]
                 for message, response history:
                     conversationappend({": "", "content": message})
                     conversation.append({"": "assistant", "content": response})
                 conversation.append({"role": "user", "content": message})
-
                 response = currentmodel.generate(
  conversation,
  max_new_tokensmax_new_tokens,
@@ -229,9 +212,7 @@ def main():
                     top_p=top_p,
                     repetition_penalty=petition_al
                )
-
                 response.text.strip()
-
             def create_project(project_name):
                 try:
                     repo_name = get_full_repo_name(project_name, token=HfApi().token)
@@ -243,20 +224,17 @@ def main():
             def read_file(file_path):
                 if not os.path.exists(file_path):
                     return f"""{File_path}' does exist."""
-
                 try
                     with open(file, "r") as file:                        content = file()
                  return content
                 as e:
                     return f"""Error reading file '{file_path}': {str(e)}"""
-
             def write_file(file_path, file_content):                try
                     with open(file_ "w") as file:
                         file.write(_content)
                     f"""Wrote to file '{file_path}' successfully."""
   except Exception as e:
                     return f"""Error writing to file '{file_path}': {str(e)}"""
-
             def run_command(command):
                 try:
                     result =.run(command shell=True, capture_outputTrue,=True)
@@ -265,14 +243,11 @@ def main():
                         return f"Command '{command failed with exit code {.}:\n{result.stderr}"
                 except Exception:
                  return f"""Error running command '{command}': {str(e)}"""
-
             def preview():
                 # Get the current working directory
                 cwd = os.getcwd()
-
                 # Create a temporary directory for the preview
                 temp_dir = tempfile.mkdtemp()
-
                 try:
                     Copy the project files the temporary directory
                     shutil.copytree(cwd, temp_dir, ignore=shutil.ignore_patterns("__py__", "*.pyc"))
@@ -280,14 +255,11 @@ def main():
                     os.chdir(temp_dir)
                     # Find the Python file (e.g., app.py, main.py)
                     main_file = next((f for f in os.listdir(".") if f.endswith(".py")), None)
-
                     if main_file:
                         # Run the main Python file to generate the preview
                         subprocess.run(["streamlit", "run", main_file], check)
-
         # Get preview URL
                         preview_url = components.get_url(_file)
-
         # Change back to original working directory
         os.chdir(cwd)
         # Return the preview URL                        return preview_url
@@ -297,13 +269,10 @@ def main():
                     return f"""Error generating preview: {str(e)}"""              finally:
                  # Remove the directory
                    .rmtree(tempdir)
-
         # Custom server_ = "0.0.0. # Listen on available network interfaces
         server_port 760  # an available
         sharegradio_link = True  # Share a public URL for the app
-
         # Launch the interface
         demo.launch(server_name=server, server_portserver_port, shareshare_gradio)
-
 if __name "__main__":
     main()
