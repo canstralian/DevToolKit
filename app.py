@@ -301,7 +301,7 @@ def main():
 
         # Custom server settings
         server_name = "0.0.0.0"  # Listen on all available network interfaces
-        server_port = 8080  # Choose an available port
+        server_port = 7860# Choose an available port
         share_gradio_link = True  # Share a public URL for the app
 
         # Launch the interface
