@@ -10,6 +10,7 @@ import gradio as gr
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from huggingface_hub import InferenceClient, cached_download, Repository, HfApi
 from IPython.display import display, HTML
+import streamlit.components.v1 as components
 
 # --- Configuration ---
 VERBOSE = True
@@ -150,7 +151,7 @@ def preview(project_path: str = DEFAULT_PROJECT_PATH):
 
 def main():
     with gr.Blocks() as demo:
-        gr.Markdown("## FragMixt: Your Hugging Face No-Code App Builder")
+        gr.Markdown("## IDEvIII: Your Hugging Face No-Code App Builder")
 
         # --- Model Selection ---
         with gr.Tab("Model"):
@@ -226,33 +227,110 @@ def main():
             def run_chat(purpose: str, message: str, agent_name: str, sys_prompt: str, temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float, history: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
                 if not current_model:
                     return [(history, history), "Please load a model first."]
-                response = generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty)
-                history.append((message, response))
-                return history, history
+            
+            def generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty):
+    if not current_model:
+        return "Please load a model first."
 
-            submit_button.click(run_chat, inputs=[purpose, message, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty, history], outputs=[chatbot, history])
+    conversation = [{"role": "system", "content": sys_prompt}]
+    for message, response in history:
+        conversation.append({"role": "user", "content": message})
+        conversation.append({"role": "assistant", "content": response})
+    conversation.append({"role": "user", "content": message})
 
-        # --- Project Management ---
-        with gr.Tab("Project"):
-            project_name = gr.Textbox(label="Project Name", placeholder="MyHuggingFaceApp")
-            create_project_button = gr.Button("Create Hugging Face Project")
-            project_output = gr.Textbox(label="Output", lines=5)
-            file_content = gr.Code(label="File Content", language="python", lines=20)
-            file_path = gr.Textbox(label="File Path (relative to project)", placeholder="src/main.py")
-            read_button = gr.Button("Read File")
-            write_button = gr.Button("Write to File")
-            command_input = gr.Textbox(label="Terminal Command", placeholder="pip install -r requirements.txt")
-            command_output = gr.Textbox(label="Command Output", lines=5)
-            run_command_button = gr.Button("Run Command")
-            preview_button = gr.Button("Preview Project")
+    response = current_model.generate(
+        conversation,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+    )
 
-            create_project_button.click(create_project, inputs=[project_name], outputs=project_output)
-            read_button.click(read_file, inputs=file_path, outputs=file_content)
-            write_button.click(write_file, inputs=[file_path, file_content], outputs=project_output)
-            run_command_button.click(run_command, inputs=command_input, outputs=command_output)
-            preview_button.click(preview, outputs=project_output)
+    return response.text.strip()
 
-    demo.launch()
+def create_project(project_name):
+    try:
+        repo_name = get_full_repo_name(project_name, token=HfApi().token)
+        repo = HfFolder.create_repo(repo_name, exist_ok=True)
+        repo.save_data("README.md", f"# {project_name}")
+        return f"Created project '{project_name}' on Hugging Face Hub."
+    except Exception as e:
+        return f"Error creating project: {str(e)}"
+
+def read_file(file_path):
+    if not os.path.exists(file_path):
+        return f"File '{file_path}' does not exist."
+
+    try:
+        with open(file_path, "r") as file:
+            content = file.read()
+        return content
+    except Exception as e:
+        return f"Error reading file '{file_path}': {str(e)}"
+
+def write_file(file_path, file_content):
+    try:
+        with open(file_path, "w") as file:
+            file.write(file_content)
+        return f"Wrote to file '{file_path}' successfully."
+    except Exception as e:
+        return f"Error writing to file '{file_path}': {str(e)}"
+
+def run_command(command):
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            return f"Command '{command}' failed with exit code {result.returncode}:\n{result.stderr}"
+    except Exception as e:
+        return f"Error running command '{command}': {str(e)}"
+
+
+def preview():
+    # Get the current working directory
+    cwd = os.getcwd()
+
+    # Create a temporary directory for the preview
+    temp_dir = tempfile.mkdtemp()
+
+    try:
+        # Copy the project files to the temporary directory
+        shutil.copytree(cwd, temp_dir, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+        # Change to the temporary directory
+        os.chdir(temp_dir)
+
+        # Find the main Python file (e.g., app.py, main.py)
+        main_file = next((f for f in os.listdir(".") if f.endswith(".py")), None)
+
+        if main_file:
+            # Run the main Python file to generate the preview
+            subprocess.run(["streamlit", "run", main_file], check=True)
+
+            # Get the preview URL
+            preview_url = components.get_url(main_file)
+
+            # Change back to the original working directory
+            os.chdir(cwd)
+
+            # Return the preview URL
+            return preview_url
+        else:
+            return "No main Python file found in the project."
+    except Exception as e:
+        return f"Error generating preview: {str(e)}"
+    finally:
+        # Remove the temporary directory
+        shutil.rmtree(temp_dir)
+
+    # Customize the launch settings
+    server_name = "0.0.0.0"  # Listen on all available network interfaces
+    server_port = 7860  # Choose an available port
+    share_gradio_link = True  # Share a public URL for the app
+
+    # Launch the interface
+    demo.launch(server_name=server_name, server_port=server_port, share=share_gradio_link)
 
 if __name__ == "__main__":
     main()
