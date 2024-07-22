@@ -245,7 +245,16 @@ def main():
                 outputs=model_description,
             )
 
-            load_button.click(load_hf_model, inputs=model_name, outputs=load_output)
+            # --- Event handler to load the selected model ---
+            def load_selected_model(model_name):
+                global current_model
+                load_output = load_hf_model(model_name)
+                if current_model:
+                    return f"Model '{model_name}' loaded successfully!"
+                else:
+                    return f"Error loading model '{model_name}'"
+
+            load_button.click(load_selected_model, inputs=model_name, outputs=load_output)
 
         # --- Chat Interface ---
         with gr.Tab("Chat"):
@@ -262,6 +271,8 @@ def main():
             history = gr.State([])
 
             def run_chat(purpose: str, message: str, agent_name: str, sys_prompt: str, temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float, history: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+                if not current_model:
+                    return [(history, history), "Please load a model first."]
                 response = generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty)
                 history.append((message, response))
                 return history, history
@@ -287,6 +298,8 @@ def main():
             write_button.click(write_to_file, inputs=[file_path, file_content], outputs=project_output)
             run_command_button.click(execute_command, inputs=command_input, outputs=command_output)
             preview_button.click(preview_project, outputs=project_output)
+
+    demo.launch()
 
 if __name__ == "__main__":
     main()
