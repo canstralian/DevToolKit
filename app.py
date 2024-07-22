@@ -138,7 +138,7 @@ def preview(project_path: str = DEFAULT_PROJECT_PATH):
         else:
             return "No 'index.html' found for preview."
     except Exception as e:
-        return f preview project: {str(e)}"
+        return f """preview project: {str(e)}"""
 
 def main():
    .Blocks() as demo:
