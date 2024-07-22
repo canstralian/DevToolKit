@@ -7,8 +7,8 @@ from datetime import datetime
 import logging
 
 import gradio as gr
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
- huggingface_hub import InferenceClient, cached_download, Repository, HfApi
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, huggingface_hub 
+import InferenceClient, cached_download, Repository, HfApi
 from IPython.display import display, HTML
 import streamlit.components.v1 as components
 
