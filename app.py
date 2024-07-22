@@ -32,69 +32,8 @@ current_model = None  # Store the currently loaded model
 repo = None  # Store the Hugging Face Repository object
 model_descriptions = {}  # Store model descriptions
 
-# --- Constants ---
-PREFIX = """Date: {date_time_str}
-Purpose: {purpose}
-Agent Name: {agent_name}
-"""
-
-LOG_PROMPT = """Prompt:
-{content}
-"""
-
-LOG_RESPONSE = """Response:
-{resp}
-"""
-
 # --- Functions ---
-def format_prompt(message: str, history: List[Tuple[str, str]], max_history_turns: int = 2) -> str:
-    prompt = ""
-    for user_prompt, bot_response in history[-max_history_turns:]:
-        prompt += f"Human: {user_prompt}\nAssistant: {bot_response}\n"
-    prompt += f"Human: {message}\nAssistant:"
-    return prompt
-
-def generate_response(
-    prompt: str,
-    history: List[Tuple[str, str]],
-    agent_name: str = "Generic Agent",
-    sys_prompt: str = "",
-    temperature: float = TEMPERATURE,
-    max_new_tokens: int = MAX_TOKENS,
-    top_p: float = TOP_P,
-    repetition_penalty: float = REPETITION_PENALTY,
-) -> str:
-    global current_model
-    if current_model is None:
-        return "Error: Please load a model first."
-
-    date_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    full_prompt = PREFIX.format(
-        date_time_str=date_time_str,
-        purpose=sys_prompt,
-        agent_name=agent_name
-    ) + format_prompt(prompt, history)
-
-    if VERBOSE:
-        logging.info(LOG_PROMPT.format(content=full_prompt))
-
-    response = current_model(
-        full_prompt,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-        do_sample=True
-    )[0]['generated_text']
-
-    assistant_response = response.split("Assistant:")[-1].strip()
-
-    if VERBOSE:
-        logging.info(LOG_RESPONSE.format(resp=assistant_response))
-
-    return assistant_response
-
-def load_hf_model(model_name: str):
+def load_model(model_name: str):
     """Loads a language model and fetches its description."""
     global current_model, model_descriptions
     try:
@@ -114,7 +53,21 @@ def load_hf_model(model_name: str):
     except Exception as e:
         return f"Error loading model: {str(e)}"
 
-def execute_command(command: str, project_path: str = None) -> str:
+def model_selection():
+    st.title("Model Selection")
+    st.write("Select a model to use for code generation:")
+    models = ["distilbert", "t5", "codellama-7b", "geminai-1.5b"]
+    selected_model = st.selectbox("Select a model:", models)
+    if selected_model:
+        model = load_model(selected_model)
+        if model:
+            st.write(f"Model {selected_model} imported successfully!")
+            return model
+        else:
+            st.write(f"Error importing model {selected_model}.")
+    return None
+
+def run_command(command: str, project_path: str = None) -> str:
     """Executes a shell command and returns the output."""
     try:
         if project_path:
@@ -128,7 +81,7 @@ def execute_command(command: str, project_path: str = None) -> str:
     except Exception as e:
         return f"Error executing command: {str(e)}"
 
-def create_hf_project(project_name: str, project_path: str = DEFAULT_PROJECT_PATH):
+def create_project(project_name: str, project_path: str = DEFAULT_PROJECT_PATH):
     """Creates a new Hugging Face project."""
     global repo
     try:
@@ -150,7 +103,7 @@ def create_hf_project(project_name: str, project_path: str = DEFAULT_PROJECT_PAT
     except Exception as e:
         return f"Error creating Hugging Face project: {str(e)}"
 
-def list_project_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
+def list_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Lists files in the project directory."""
     try:
         files = os.listdir(project_path)
@@ -160,7 +113,7 @@ def list_project_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
     except Exception as e:
         return f"Error listing project files: {str(e)}"
 
-def read_file_content(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
+def read_file(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Reads and returns the content of a file in the project."""
     try:
         full_path = os.path.join(project_path, file_path)
@@ -170,7 +123,7 @@ def read_file_content(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) 
     except Exception as e:
         return f"Error reading file: {str(e)}"
 
-def write_to_file(file_path: str, content: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
+def write_file(file_path: str, content: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Writes content to a file in the project."""
     try:
         full_path = os.path.join(project_path, file_path)
@@ -180,7 +133,7 @@ def write_to_file(file_path: str, content: str, project_path: str = DEFAULT_PROJ
     except Exception as e:
         return f"Error writing to file: {str(e)}"
 
-def preview_project(project_path: str = DEFAULT_PROJECT_PATH):
+def preview(project_path: str = DEFAULT_PROJECT_PATH):
     """Provides a preview of the project, if applicable."""
     # Assuming a simple HTML preview for now
     try:
@@ -248,7 +201,7 @@ def main():
             # --- Event handler to load the selected model ---
             def load_selected_model(model_name):
                 global current_model
-                load_output = load_hf_model(model_name)
+                load_output = load_model(model_name)
                 if current_model:
                     return f"Model '{model_name}' loaded successfully!"
                 else:
@@ -293,11 +246,11 @@ def main():
             run_command_button = gr.Button("Run Command")
             preview_button = gr.Button("Preview Project")
 
-            create_project_button.click(create_hf_project, inputs=[project_name], outputs=project_output)
-            read_button.click(read_file_content, inputs=file_path, outputs=file_content)
-            write_button.click(write_to_file, inputs=[file_path, file_content], outputs=project_output)
-            run_command_button.click(execute_command, inputs=command_input, outputs=command_output)
-            preview_button.click(preview_project, outputs=project_output)
+            create_project_button.click(create_project, inputs=[project_name], outputs=project_output)
+            read_button.click(read_file, inputs=file_path, outputs=file_content)
+            write_button.click(write_file, inputs=[file_path, file_content], outputs=project_output)
+            run_command_button.click(run_command, inputs=command_input, outputs=command_output)
+            preview_button.click(preview, outputs=project_output)
 
     demo.launch()
 
