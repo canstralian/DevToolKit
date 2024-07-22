@@ -270,7 +270,7 @@ def main():
                  # Remove the directory
                    .rmtree(tempdir)
         # Custom server_ = "0.0.0. # Listen on available network interfaces
-        server_port 760  # an available
+        server_port 7606  # an available
         sharegradio_link = True  # Share a public URL for the app
         # Launch the interface
         demo.launch(server_name=server, server_portserver_port, shareshare_gradio)
