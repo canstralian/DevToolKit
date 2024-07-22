@@ -1,30 +1,57 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Code Completion Assistant</title>
+    <title>FragMixt: Your AI-Powered Coding Assistant</title>
+    <script src="https://cdn.jsdelivr.net/npm/@gradio/gradio@latest/gradio.min.js"></script>
   </head>
   <body>
     <div id="my_gradio_app">
-      <!-- The embedded code completion assistant will be displayed here -->
+      <!-- The embedded FragMixt app will be displayed here -->
     </div>
     <script>
-      // Assuming you have access to OpenAI's API and Codex
-      // Replace 'your_api_key' with your actual OpenAI API key
-      const code_completion = pipeline("text-generation", model="code-davinci-002", temperature=0.7, max_length=50, num_return_sequences=1, api_key='your_api_key');
+      const iface = gr.Blocks()
+        .with_tab("Model", [
+          gr.Dropdown(
+            choices=["Code Generation", "Code Explanation", "Code Optimization", "Code Translation"],
+            label="Model Task",
+            value="Code Generation"
+          ),
+          gr.Dropdown(
+            choices=[],
+            label="Hugging Face Model"
+          ),
+          gr.Button("Load Model"),
+          gr.Textbox(label="Status"),
+          gr.Markdown(label="Model Description")
+        ])
+        .with_tab("Code Assistant", [
+          gr.Chatbot(show_label=false, show_share_button=false, show_copy_button=true, likeable=true),
+          gr.Textbox(label="Enter your code or query", placeholder="Ask me anything related to code!"),
+          gr.Dropdown(label="Programming Language", choices=["Python", "JavaScript", "Java", "C++", "C#", "Ruby", "Go", "Rust", "Swift", "Kotlin"], value="Python", interactive=true),
+          gr.Textbox(label="Context", placeholder="Provide any additional context or requirements", max_lines=3, interactive=true),
+          gr.Slider(label="Temperature", minimum=0.0, maximum=1.0, step=0.05, interactive=true, info="Higher values produce more diverse outputs"),
+          gr.Slider(label="Max new tokens", minimum=0, maximum=1048 * 10, step=64, interactive=true, info="The maximum numbers of new tokens"),
+          gr.Slider(label="Top-p (nucleus sampling)", minimum=0.0, maximum=1, step=0.05, interactive=true, info="Higher values sample more low-probability tokens"),
+          gr.Slider(label="Repetition penalty", minimum=1.0, maximum=2.0, step=0.05, interactive=true, info="Penalize repeated tokens"),
+          gr.Button(value="Submit"),
+          gr.State([]),
+          gr.Button(value="+", variant="primary"),
+        ])
+        .with_tab("Project", [
+          gr.Textbox(label="Project Name", placeholder="MyCodeProject"),
+          gr.Button("Create Project"),
+          gr.Textbox(label="Output", lines=5),
+          gr.Code(label="Code Editor", language="python", lines=20),
+          gr.Textbox(label="File Path", placeholder="src/main.py"),
+          gr.Button("Read File"),
+          gr.Button("Save File"),
+          gr.Textbox(label="Terminal Command", placeholder="pip install -r requirements.txt"),
+          gr.Textbox(label="Command Output", lines=5),
+          gr.Button("Run Command"),
+          gr.Button("Preview Project")
+        ]);
 
-      const generate_code = (input_code) => {
-        return code_completion(input_code, max_length=50, num_return_sequences=1)[0]['generated_text'];
-      };
-
-      const iface = gr.Interface({
-        generate_code: generate_code
-      }, {
-        inputs: gr.inputs.Textbox({label: "Enter your code snippet"}),
-        outputs: gr.outputs.Textbox({label: "Generated Code"}),
-        title: "Code Completion Assistant"
-      });
-
-      // Render the embedded code completion assistant
+      // Render the embedded FragMixt app
       iface.mount("my_gradio_app");
     </script>
   </body>
