@@ -76,15 +76,15 @@ def run_command(command: str, project_path: str = None) -> str:
             process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = process.communicate()
         if error:
-            return f"Error: {error.decode('utf-8')}"
+            return f"""Error: {error.decode('utf-8')}"""
         return.decode("utf-8
     except Exception as e:
-        return f"Error executing command: {stre)}"
+        return f"""Error executing command: {stre)}"""
 _project(project_name: str, project_path: str = DEFAULT_PROJECTPATH):
     """Creates a new Hugging Face project."""
     global repo
     try os.path.exists(project_path):
-            return f"Error: Directory '{project_path}' already exists!"
+            return f"""Error: Directory '{project_path}' already exists!"""
         # Create the repository
         repo = Repository(local_dir=project_path, clone_from=None)
         repo.git_init()
@@ -94,9 +94,9 @@ _project(project_name: str, project_path: str = DEFAULT_PROJECTPATH):
         # Stage all changes        repo.git_add(pattern="*")
         repo.git_commit(commit_message="Initial commit")
 
-        return f"Hugging Face project '{project_name}' created successfully at '{project_"
+        return f"""Hugging Face project '{project_name}' created successfully at '{project_path}'"""
     except Exception as e:
-        return f"Error creating Hugging Face project: {str(e)}"
+        return f"""Error creating Hugging Face project: {str(e)}"""
 
 def list(project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Lists files in the project directory."""
@@ -105,7 +105,8 @@ def list(project_path: str = DEFAULT_PROJECT_PATH) -> str:
         if not files:
             return "Project directory is empty."
         return "\n".join(files)
- except Exception as e:        return f"Error listing project {str()}"
+    except Exception as e:        
+        return f"""Error listing project {str()}"""
 
 def read_file(filepath: str, project_path: str = DEFAULT_PROPATH) -> str """Reads and returns the content of a file in the project."""
     try:
@@ -114,7 +115,7 @@ _path = os.path.join(project_path, file_path)
             content = f.read()
         return content
     except Exception as e:
-        return f"Error reading file: {str(e)}"
+        return f"""Error reading file: {str(e)}"""
 def write_file(file_: str, content str project_path str =PROJECT_PATH:
     """Writes content to a file in the project."""
     try:
@@ -123,7 +124,7 @@ def write_file(file_: str, content str project_path str =PROJECT_PATH:
             f.(
         return"Successfully wrote to '{_path}'"
     except Exception as e:
-        return f"Error writing to file: {str(e)}"
+        return f"""Error writing to file: {str(e)}"""
 
 def preview(project_path: str = DEFAULT_PROJECT_PATH):
     """Provides a preview of the project, if applicable."""
@@ -141,7 +142,7 @@ def preview(project_path: str = DEFAULT_PROJECT_PATH):
         return f """preview project: {str(e)}"""
 
 def main():
-   .Blocks() as demo:
+  .Blocks() as demo:
         gr.Markdown("## IDEvIII: Your Hugging No- App Builder")
         --- Model Selection ---        with gr.Tab("Model"):            --- Model Drop with Categories ---
             model_categories = gr.Dropdown(
@@ -188,9 +189,9 @@ def main():
                 global current_model
                 load_output = load_model(model_name)
                 if current_model:
-                    return f"Model '{model_name}' loaded successfully!"
+                    return f"""Model '{model_name}' loaded successfully!"""
                 else:
-                    return f"Error loading model '{model_name}'"
+                    return f"""Error loading model '{model_name}'"""
 
             load_button.click(load_selected_model, inputs=model_name, outputs=load_output)
 
@@ -198,9 +199,9 @@ def main():
         with gr.Tab("Chat
             chatbot gr.Chatbot(show_label=False, show_share_button=False_copy_button, likeable)
             message = gr.Textbox(Enter your message="Ask me anything!")
-            purpose = gr.Textbox(label="Purpose", placeholder="What is the of this interaction)
-            agent_name = gr.(label="Ag=["Generic Agent"], value="Generic Agent", interactive=True)
-prompt = gr.Textboxlabel="System Prompt", max_lines=1, interactive=True)
+            purpose = gr.Textbox(label="Purpose", placeholder="What is the of this interaction)",
+            agent_name = gr.(label="Ag=Generic Agent", value="Generic Agent", interactive=True)
+            prompt" = gr.Textboxlabel="System Prompt", max_lines=1, interactive=True)
             temperature = gr.Slider(label="Temperature", value=TEMPERATURE, minimum=0.0, maximum=1.0, step=0.05, interactive=True, info="Higher values produce more max_newtokens =Slider(labelMax new tokens", value=MAX_TOKENS, minimum=0, maximum=1048 * 10, step=64, interactive=True, info="The maximum numbers of new tokens")
             top_p = gr.Slider(label="Top-p (nucleus sampling)", valueTOP_P, minimum=0, maximum=1 step=0.05, interactive=True, info="Higher values sample more low-probability tokens")
             repetition_penalty = gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY minimum=1., maximum=2.0,=0.05, interactive=True, info="Penalize repeated tokens")
@@ -236,25 +237,25 @@ prompt = gr.Textboxlabel="System Prompt", max_lines=1, interactive=True)
                     repo_name = get_full_repo_name(project_name, token=HfApi().token)
                     repofFolder.create_repo(repo_name, exist_ok=True)
                     repo.save_data("README.md", f"# {project_name
-                    return f" '{project_name}' on Hugging Face Hub."
+                    return f"""'{project_name}' on Hugging Face Hub."""
                 except Exception as e:
                     return"Error project: {str(e)}
             def read_file(file_path):
                 if not os.path.exists(file_path):
-                    return f"File_path}' does exist."
+                    return f"""{File_path}' does exist."""
 
                 try
                     with open(file, "r") as file:                        content = file()
                  return content
                 as e:
-                    return f"Error reading file '{file_path}': {str(e)}"
+                    return f"""Error reading file '{file_path}': {str(e)}"""
 
             def write_file(file_path, file_content):                try
                     with open(file_ "w") as file:
                         file.write(_content)
-                    f"Wrote to file '{file_path}' successfully."
+                    f"""Wrote to file '{file_path}' successfully."""
   except Exception as e:
-                    return f"Error writing to file '{file_path}': {str(e)}"
+                    return f"""Error writing to file '{file_path}': {str(e)}"""
 
             def run_command(command):
                 try:
@@ -263,7 +264,7 @@ prompt = gr.Textboxlabel="System Prompt", max_lines=1, interactive=True)
                         return result.stdout else:
                         return f"Command '{command failed with exit code {.}:\n{result.stderr}"
                 except Exception:
-                 return f"Error running command '{command}': {str(e)}"
+                 return f"""Error running command '{command}': {str(e)}"""
 
             def preview():
                 # Get the current working directory
@@ -293,7 +294,7 @@ prompt = gr.Textboxlabel="System Prompt", max_lines=1, interactive=True)
                     else:
                         return "No main found in the project."
                 except Exception as:
-                    return f"Error generating preview: {str(e)}"               finally:
+                    return f"""Error generating preview: {str(e)}"""              finally:
                  # Remove the directory
                    .rmtree(tempdir)
 
