@@ -77,7 +77,7 @@ def run_command(command: str, project_path: str = None) -> str:
         output, error = process.communicate()
         if error:
             return f"""Error: {error.decode('utf-8')}"""
-        return.decode("utf-8
+        return.decode("""utf-8""")
     except Exception as e:
         return f"""Error executing command: {stre)}"""
 _project(project_name: str, project_path: str = DEFAULT_PROJECTPATH):
