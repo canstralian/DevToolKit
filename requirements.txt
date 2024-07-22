@@ -7,4 +7,6 @@ pylint
 ipython
 torch
 tensorflow
+tensorrt
+tensor
 flax
