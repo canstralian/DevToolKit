@@ -48,7 +48,7 @@ def load_model(model_name: str):
 
         # Fetch and store the model description
         api = HfApi()
-        model_info =.model_info(model_name)
+        model_info = api.model_info(model_name)
         model_descriptions[model_name] = model_info.pipeline_tag
         return f"Successfully loaded model: {model_name}"
     except Exception as e:
