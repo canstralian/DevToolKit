@@ -32,6 +32,20 @@ current_model = None  # Store the currently loaded model
 repo = None  # Store the Hugging Face Repository object
 model_descriptions = {}  # Store model descriptions
 
+# --- Constants ---
+PREFIX = """Date: {date_time_str}
+Purpose: {purpose}
+Agent Name: {agent_name}
+"""
+
+LOG_PROMPT = """Prompt:
+{content}
+"""
+
+LOG_RESPONSE = """Response:
+{resp}
+"""
+
 # --- Functions ---
 def format_prompt(message: str, history: List[Tuple[str, str]], max_history_turns: int = 2) -> str:
     prompt = ""
@@ -275,24 +289,4 @@ def main():
             preview_button.click(preview_project, outputs=project_output)
 
 if __name__ == "__main__":
-    app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
-
-    if app_mode == "AI Agent Creator":
-        toolbox()
-
-    elif app_mode == "Tool Box":
-        toolbox()
-
-    elif app_mode == "Workspace Chat App":
-        workspace()
-
-    else:
-        raise ValueError("Invalid app mode selected.")
-
-    # Set up Flask app and run it
-    app = Flask(__name__)
-    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
-    app.config["UPLOADED_IMAGES_DEST"] = UPLOADED_IMAGES_DEST
-    app.config["UPLOADED_STATIC_DEST"] = UPLOADED_STATIC_DEST
-    app.register_blueprint(streamlit_blueprint)
-    app.run(debug=True)
+    main()
