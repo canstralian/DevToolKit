@@ -6,9 +6,9 @@ import time
 from typing import Dict, List, Tuple
 from datetime import datetime
 import logging
-
+import huggingface-hub as hfApi
 import gradio as gr
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, HfApi
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from huggingface_hub import InferenceClient, cached_download, Repository
 from IPython.display import display, HTML
 import streamlit.components.v1 as components
