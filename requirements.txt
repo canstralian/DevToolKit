@@ -1,6 +1,6 @@
 streamlit==1.36.0
 transformers==4.42.4
-huggingface_hub
+huggingface-hub
 gradio
 black
 pylint
