@@ -14,9 +14,22 @@ import tempfile
 
 from huggingface_hub import HfFolder
 
+import streamlit as st
+
 def main():
+    st.title("Application Idea Generator")
+    idea = st.text_input("What is your idea for an application?", "default idea")
+    if st.button("Generate Code"):
+        # Lógica para generar el código basada en la idea
+        st.write(f"Generated code for idea: {idea}")
+
     # Get the user's idea
-    idea = input("What is your idea for an application? ")
+    st.title("Application Idea Generator")
+    idea = st.text_input("What is your idea for an application?", "default idea")
+    if st.button("Generate Code"):
+        # Lógica para generar el código basada en la idea
+        st.write(f"Generated code for idea: {idea}")
+
 
     # Generate the code for the application
     code = gemmacode.generate(idea)
