@@ -417,7 +417,7 @@ def main():
 
         # --- Custom Server Settings ---
         server_name = "0.0.0.0"  # Listen on available network interfaces
-        server_port = 7606  # Choose an available port
+        server_port = 7860  # Choose an available port
         share_gradio_link = True  # Share a public URL for the app
 
         # --- Launch the Interface ---
