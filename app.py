@@ -4,8 +4,6 @@ import time
 
 import huggingface_hub
 
-from huggingface_hub.commands import HfFolder
-
 import transformers
 
 from transformers import pipeline
