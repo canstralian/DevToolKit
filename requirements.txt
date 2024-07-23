@@ -6,6 +6,7 @@ black
 pylint
 ipython
 torch
+libgl1-mesa-glx
 tensorflow
 tensorrt
 tensor
