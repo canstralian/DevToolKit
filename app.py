@@ -5,13 +5,11 @@ import time
 from typing import Dict, List, Tuple
 from datetime import datetime
 import logging
+
 import gradio as gr
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, huggingface_hub
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from huggingface_hub import InferenceClient, cached_download, Repository, HfApi
 from IPython.display import display, HTML
-import streamlit.components.v1 as components
-import tempfile
-import shutil
 
 # --- Configuration ---
 VERBOSE = True
@@ -33,12 +31,56 @@ logging.basicConfig(
 current_model = None  # Store the currently loaded model
 repo = None  # Store the Hugging Face Repository object
 model_descriptions = {}  # Store model descriptions
-project_path = DEFAULT_PROJECT_PATH  # Default project path
 
 # --- Functions ---
+def format_prompt(message: str, history: List[Tuple[str, str]], max_history_turns: int = 2) -> str:
+    prompt = ""
+    for user_prompt, bot_response in history[-max_history_turns:]:
+        prompt += f"Human: {user_prompt}\nAssistant: {bot_response}\n"
+    prompt += f"Human: {message}\nAssistant:"
+    return prompt
 
+def generate_response(
+    prompt: str,
+    history: List[Tuple[str, str]],
+    agent_name: str = "Generic Agent",
+    sys_prompt: str = "",
+    temperature: float = TEMPERATURE,
+    max_new_tokens: int = MAX_TOKENS,
+    top_p: float = TOP_P,
+    repetition_penalty: float = REPETITION_PENALTY,
+) -> str:
+    global current_model
+    if current_model is None:
+        return "Error: Please load a model first."
 
-def load_model(model_name: str):
+    date_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_prompt = PREFIX.format(
+        date_time_str=date_time_str,
+        purpose=sys_prompt,
+        agent_name=agent_name
+    ) + format_prompt(prompt, history)
+
+    if VERBOSE:
+        logging.info(LOG_PROMPT.format(content=full_prompt))
+
+    response = current_model(
+        full_prompt,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        do_sample=True
+    )[0]['generated_text']
+
+    assistant_response = response.split("Assistant:")[-1].strip()
+
+    if VERBOSE:
+        logging.info(LOG_RESPONSE.format(resp=assistant_response))
+
+    return assistant_response
+
+def load_hf_model(model_name: str):
     """Loads a language model and fetches its description."""
     global current_model, model_descriptions
     try:
@@ -47,8 +89,9 @@ def load_model(model_name: str):
             "text-generation",
             model=model_name,
             tokenizer=tokenizer,
-            model_kwargs={"load_in_8bit": True},
+            model_kwargs={"load_in_8bit": True}
         )
+
         # Fetch and store the model description
         api = HfApi()
         model_info = api.model_info(model_name)
@@ -57,52 +100,43 @@ def load_model(model_name: str):
     except Exception as e:
         return f"Error loading model: {str(e)}"
 
-
-def run_command(command: str, project_path: str = None) -> str:
+def execute_command(command: str, project_path: str = None) -> str:
     """Executes a shell command and returns the output."""
     try:
         if project_path:
-            process = subprocess.Popen(
-                command,
-                shell=True,
-                cwd=project_path,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            process = subprocess.Popen(command, shell=True, cwd=project_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         else:
-            process = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = process.communicate()
         if error:
-            return f"""Error: {error.decode('utf-8')}"""
+            return f"Error: {error.decode('utf-8')}"
         return output.decode("utf-8")
     except Exception as e:
-        return f"""Error executing command: {str(e)}"""
+        return f"Error executing command: {str(e)}"
 
-
-def create_project(project_name: str, project_path: str = DEFAULT_PROJECT_PATH):
+def create_hf_project(project_name: str, project_path: str = DEFAULT_PROJECT_PATH):
     """Creates a new Hugging Face project."""
-    global repo, project_path
+    global repo
     try:
         if os.path.exists(project_path):
-            return f"""Error: Directory '{project_path}' already exists!"""
+            return f"Error: Directory '{project_path}' already exists!"
         # Create the repository
         repo = Repository(local_dir=project_path, clone_from=None)
         repo.git_init()
-        # Add basic files (optional, can customize this)
+
+        # Add basic files (optional, you can customize this)
         with open(os.path.join(project_path, "README.md"), "w") as f:
-            f.write(f"{project_name}\n\nA new Hugging Face project.")
+            f.write(f"# {project_name}\n\nA new Hugging Face project.")
+
         # Stage all changes
         repo.git_add(pattern="*")
         repo.git_commit(commit_message="Initial commit")
-        project_path = os.path.join(project_path, project_name)  # Update project path
-        return f"""Hugging Face project '{project_name}' created successfully at '{project_path}'"""
+
+        return f"Hugging Face project '{project_name}' created successfully at '{project_path}'"
     except Exception as e:
-        return f"""Error creating Hugging Face project: {str(e)}"""
+        return f"Error creating Hugging Face project: {str(e)}"
 
-
-def list_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
+def list_project_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Lists files in the project directory."""
     try:
         files = os.listdir(project_path)
@@ -110,10 +144,9 @@ def list_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
             return "Project directory is empty."
         return "\n".join(files)
     except Exception as e:
-        return f"""Error listing project files: {str(e)}"""
+        return f"Error listing project files: {str(e)}"
 
-
-def read_file(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
+def read_file_content(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Reads and returns the content of a file in the project."""
     try:
         full_path = os.path.join(project_path, file_path)
@@ -121,21 +154,19 @@ def read_file(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
             content = f.read()
         return content
     except Exception as e:
-        return f"""Error reading file: {str(e)}"""
+        return f"Error reading file: {str(e)}"
 
-
-def write_file(file_path: str, content: str, project_path: str = DEFAULT_PROJECT_PATH):
+def write_to_file(file_path: str, content: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
     """Writes content to a file in the project."""
     try:
         full_path = os.path.join(project_path, file_path)
         with open(full_path, "w") as f:
             f.write(content)
-        return f"Successfully wrote to '{full_path}'"
+        return f"Successfully wrote to '{file_path}'"
     except Exception as e:
-        return f"""Error writing to file: {str(e)}"""
+        return f"Error writing to file: {str(e)}"
 
-
-def preview(project_path: str = DEFAULT_PROJECT_PATH):
+def preview_project(project_path: str = DEFAULT_PROJECT_PATH):
     """Provides a preview of the project, if applicable."""
     # Assuming a simple HTML preview for now
     try:
@@ -148,140 +179,19 @@ def preview(project_path: str = DEFAULT_PROJECT_PATH):
         else:
             return "No 'index.html' found for preview."
     except Exception as e:
-        return f"""Error previewing project: {str(e)}"""
-
-
-def generate_response(
-    message: str,
-    history: List[Tuple[str, str]],
-    agent_name: str,
-    sys_prompt: str,
-    temperature: float,
-    max_new_tokens: int,
-    top_p: float,
-    repetition_penalty: float,
-) -> str:
-    """Generates a response using the loaded model."""
-    if not current_model:
-        return "Please load a model first."
-    conversation = [{"role": "system", "content": sys_prompt}]
-    for message, response in history:
-        conversation.append({"role": "user", "content": message})
-        conversation.append({"role": "assistant", "content": response})
-    conversation.append({"role": "user", "content": message})
-    response = current_model.generate(
-        conversation,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-    )
-    return response.text.strip()
-
-
-def run_chat(
-    purpose: str,
-    message: str,
-    agent_name: str,
-    sys_prompt: str,
-    temperature: float,
-    max_new_tokens: int,
-    top_p: float,
-    repetition_penalty: float,
-    history: List[Tuple[str, str]],
-) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-    """Handles the chat interaction."""
-    if not current_model:
-        return [(history, history), "Please load a model first."]
-    response = generate_response(
-        message,
-        history,
-        agent_name,
-        sys_prompt,
-        temperature,
-        max_new_tokens,
-        top_p,
-        repetition_penalty,
-    )
-    history.append((message, response))
-    return [(history, history), response]
-
-
-def update_model_dropdown(category):
-    """Populates the model dropdown based on the selected category."""
-    models = []
-    api = HfApi()
-    for model in api.list_models():
-        if model.pipeline_tag == category:
-            models.append(model.modelId)
-    return gr.Dropdown.update(choices=models)
-
-
-def display_model_description(model_name):
-    """Displays the description of the selected model."""
-    global model_descriptions
-    if model_name in model_descriptions:
-        return model_descriptions[model_name]
-    else:
-        return "Model description not available."
-
-
-def load_selected_model(model_name):
-    """Loads the selected model."""
-    global current_model
-    load_output = load_model(model_name)
-    if current_model:
-        return f"""Model '{model_name}' loaded successfully!"""
-    else:
-        return f"""Error loading model '{model_name}'"""
-
-
-def create_project_handler(project_name):
-    """Handles the creation of a new project."""
-    return create_project(project_name)
-
-
-def list_files_handler():
-    """Handles the listing of files in the project directory."""
-    return list_files(project_path)
-
-
-def read_file_handler(file_path):
-    """Handles the reading of a file in the project."""
-    return read_file(file_path, project_path)
-
-
-def write_file_handler(file_path, file_content):
-    """Handles the writing of content to a file in the project."""
-    return write_file(file_path, file_content, project_path)
-
-
-def run_command_handler(command):
-    """Handles the execution of a shell command."""
-    return run_command(command, project_path)
-
-
-def preview_handler():
-    """Handles the preview of the project."""
-    return preview(project_path)
-
+        return f"Error previewing project: {str(e)}"
 
 def main():
-    """Main function to launch the Gradio interface."""
     with gr.Blocks() as demo:
-        gr.Markdown("## IDEvIII: Your Hugging Face No-Code App Builder")
+        gr.Markdown("## FragMixt: Your Hugging Face No-Code App Builder")
+
         # --- Model Selection ---
         with gr.Tab("Model"):
+            # --- Model Dropdown with Categories ---
             model_categories = gr.Dropdown(
-                choices=[
-                    "Text Generation",
-                    "Text Summarization",
-                    "Code Generation",
-                    "Translation",
-                    "Question Answering",
-                ],
+                choices=["Text Generation", "Text Summarization", "Code Generation", "Translation", "Question Answering"],
                 label="Model Category",
-                value="Text Generation",
+                value="Text Generation"
             )
             model_name = gr.Dropdown(
                 choices=[],  # Initially empty, will be populated based on category
@@ -291,142 +201,80 @@ def main():
             load_output = gr.Textbox(label="Output")
             model_description = gr.Markdown(label="Model Description")
 
+            # --- Function to populate model names based on category ---
+            def update_model_dropdown(category):
+                models = []
+                api = HfApi()
+                for model in api.list_models():
+                    if model.pipeline_tag == category:
+                        models.append(model.modelId)
+                return gr.Dropdown.update(choices=models)
+
+            # --- Event handler for category dropdown ---
             model_categories.change(
-                fn=update_model_dropdown, inputs=model_categories, outputs=model_name
+                fn=update_model_dropdown,
+                inputs=model_categories,
+                outputs=model_name,
             )
+
+            # --- Event handler to display model description ---
+            def display_model_description(model_name):
+                global model_descriptions
+                if model_name in model_descriptions:
+                    return model_descriptions[model_name]
+                else:
+                    return "Model description not available."
+
             model_name.change(
-                fn=display_model_description, inputs=model_name, outputs=model_description
+                fn=display_model_description,
+                inputs=model_name,
+                outputs=model_description,
             )
-            load_button.click(
-                load_selected_model, inputs=model_name, outputs=load_output
-            )
+
+            load_button.click(load_hf_model, inputs=model_name, outputs=load_output)
 
         # --- Chat Interface ---
         with gr.Tab("Chat"):
-            chatbot = gr.Chatbot(
-                show_label=False,
-                show_share_button=False,
-                show_copy_button=True,
-                likeable=True,
-            )
-            message = gr.Textbox(
-                label="Enter your message", placeholder="Ask me anything!"
-            )
-            purpose = gr.Textbox(
-                label="Purpose", placeholder="What is the purpose of this interaction?"
-            )
-            agent_name = gr.Textbox(
-                label="Agent Name", value="Generic Agent", interactive=True
-            )
-            sys_prompt = gr.Textbox(
-                label="System Prompt", max_lines=1, interactive=True
-            )
-            temperature = gr.Slider(
-                label="Temperature",
-                value=TEMPERATURE,
-                minimum=0.0,
-                maximum=1.0,
-                step=0.05,
-                interactive=True,
-                info="Higher values produce more creative text.",
-            )
-            max_new_tokens = gr.Slider(
-                label="Max new tokens",
-                value=MAX_TOKENS,
-                minimum=0,
-                maximum=1048 * 10,
-                step=64,
-                interactive=True,
-                info="The maximum number of new tokens to generate.",
-            )
-            top_p = gr.Slider(
-                label="Top-p (nucleus sampling)",
-                value=TOP_P,
-                minimum=0,
-                maximum=1,
-                step=0.05,
-                interactive=True,
-                info="Higher values sample more low-probability tokens.",
-            )
-            repetition_penalty = gr.Slider(
-                label="Repetition penalty",
-                value=REPETITION_PENALTY,
-                minimum=1.0,
-                maximum=2.0,
-                step=0.05,
-                interactive=True,
-                info="Penalize repeated tokens.",
-            )
+            chatbot = gr.Chatbot(show_label=False, show_share_button=False, show_copy_button=True, likeable=True)
+            message = gr.Textbox(label="Enter your message", placeholder="Ask me anything!")
+            purpose = gr.Textbox(label="Purpose", placeholder="What is the purpose of this interaction?")
+            agent_name = gr.Dropdown(label="Agents", choices=["Generic Agent"], value="Generic Agent", interactive=True)
+            sys_prompt = gr.Textbox(label="System Prompt", max_lines=1, interactive=True)
+            temperature = gr.Slider(label="Temperature", value=TEMPERATURE, minimum=0.0, maximum=1.0, step=0.05, interactive=True, info="Higher values produce more diverse outputs")
+            max_new_tokens = gr.Slider(label="Max new tokens", value=MAX_TOKENS, minimum=0, maximum=1048 * 10, step=64, interactive=True, info="The maximum numbers of new tokens")
+            top_p = gr.Slider(label="Top-p (nucleus sampling)", value=TOP_P, minimum=0.0, maximum=1, step=0.05, interactive=True, info="Higher values sample more low-probability tokens")
+            repetition_penalty = gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY, minimum=1.0, maximum=2.0, step=0.05, interactive=True, info="Penalize repeated tokens")
             submit_button = gr.Button(value="Send")
             history = gr.State([])
-            submit_button.click(
-                run_chat,
-                inputs=[
-                    purpose,
-                    message,
-                    agent_name,
-                    sys_prompt,
-                    temperature,
-                    max_new_tokens,
-                    top_p,
-                    repetition_penalty,
-                    history,
-                ],
-                outputs=[chatbot, history],
-            )
+
+            def run_chat(purpose: str, message: str, agent_name: str, sys_prompt: str, temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float, history: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+                response = generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty)
+                history.append((message, response))
+                return history, history
+
+            submit_button.click(run_chat, inputs=[purpose, message, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty, history], outputs=[chatbot, history])
 
         # --- Project Management ---
         with gr.Tab("Project"):
-            project_name = gr.Textbox(label="Project Name")
-            create_project_button = gr.Button("Create Project")
-            create_project_output = gr.Textbox(label="Output")
-            list_files_button = gr.Button("List Files")
-            list_files_output = gr.Textbox(label="Output")
-            file_path = gr.Textbox(label="File Path")
-            read_file_button = gr.Button("Read File")
-            read_file_output = gr.Textbox(label="Output")
-            file_content = gr.Textbox(label="File Content")
-            write_file_button = gr.Button("Write File")
-            write_file_output = gr.Textbox(label="Output")
-            run_command_input = gr.Textbox(label="Command")
+            project_name = gr.Textbox(label="Project Name", placeholder="MyHuggingFaceApp")
+            create_project_button = gr.Button("Create Hugging Face Project")
+            project_output = gr.Textbox(label="Output", lines=5)
+            file_content = gr.Code(label="File Content", language="python", lines=20)
+            file_path = gr.Textbox(label="File Path (relative to project)", placeholder="src/main.py")
+            read_button = gr.Button("Read File")
+            write_button = gr.Button("Write to File")
+            command_input = gr.Textbox(label="Terminal Command", placeholder="pip install -r requirements.txt")
+            command_output = gr.Textbox(label="Command Output", lines=5)
             run_command_button = gr.Button("Run Command")
-            run_command_output = gr.Textbox(label="Output")
-            preview_button = gr.Button("Preview")
-            preview_output = gr.Textbox(label="Output")
+            preview_button = gr.Button("Preview Project")
 
-            create_project_button.click(
-                create_project_handler, inputs=project_name, outputs=create_project_output
-            )
-            list_files_button.click(
-                list_files_handler, outputs=list_files_output
-            )
-            read_file_button.click(
-                read_file_handler, inputs=file_path, outputs=read_file_output
-            )
-            write_file_button.click(
-                write_file_handler,
-                inputs=[file_path, file_content],
-                outputs=write_file_output,
-            )
-            run_command_button.click(
-                run_command_handler, inputs=run_command_input, outputs=run_command_output
-            )
-            preview_button.click(
-                preview_handler, outputs=preview_output
-            )
+            create_project_button.click(create_hf_project, inputs=[project_name], outputs=project_output)
+            read_button.click(read_file_content, inputs=file_path, outputs=file_content)
+            write_button.click(write_to_file, inputs=[file_path, file_content], outputs=project_output)
+            run_command_button.click(execute_command, inputs=command_input, outputs=command_output)
+            preview_button.click(preview_project, outputs=project_output)
 
-        # --- Custom Server Settings ---
-        server_name = "0.0.0.0"  # Listen on available network interfaces
-        server_port = 7860  # Choose an available port
-        share_gradio_link = True  # Share a public URL for the app
+    demo.launch()
 
-        # --- Launch the Interface ---
-        demo.launch(
-            server_name=server_name,
-            server_port=server_port,
-            share=share_gradio_link,
-        )
-
-gr.load("models/mistralai/Mistral-Large-Instruct-2407").launch()
 if __name__ == "__main__":
     main()
