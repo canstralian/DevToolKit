@@ -427,6 +427,6 @@ def main():
             share=share_gradio_link,
         )
 
-
+gr.load("models/mistralai/Mistral-Large-Instruct-2407").launch()
 if __name__ == "__main__":
     main()
