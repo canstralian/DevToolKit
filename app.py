@@ -13,7 +13,7 @@ import gradio as gr
 import random
 import prompts
 client = InferenceClient(
-    "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    "mistralai/Mixtral-8x7B-v0.1"
 )
 
 def format_prompt(message, history):
@@ -46,7 +46,7 @@ rag_retriever = pipeline("text-generation", model="mistralai/Mixtral-8x7B-v0.1")
 chat_model = AutoModelForSeq2SeqLM.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
 
 # Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
 def process_input(user_input: str) -> str:
     # Input pipeline: Tokenize and preprocess user input
