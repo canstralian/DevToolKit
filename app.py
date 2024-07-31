@@ -1,280 +1,254 @@
 import os
 import subprocess
-import random
-import time
-from typing import Dict, List, Tuple
-from datetime import datetime
-import logging
-
-import gradio as gr
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from huggingface_hub import InferenceClient, cached_download, Repository, HfApi
-from IPython.display import display, HTML
-
-# --- Configuration ---
-VERBOSE = True
-MAX_HISTORY = 5
-MAX_TOKENS = 2048
-TEMPERATURE = 0.7
-TOP_P = 0.8
-REPETITION_PENALTY = 1.5
-DEFAULT_PROJECT_PATH = "./my-hf-project"  # Default project directory
-
-# --- Logging Setup ---
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+import torch
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+from agent.prompts import (
+    ACTION_PROMPT,
+    ADD_PROMPT,
+    COMPRESS_HISTORY_PROMPT,
+    LOG_PROMPT,
+    LOG_RESPONSE,
+    MODIFY_PROMPT,
+    PREFIX,
+    READ_PROMPT,
+    TASK_PROMPT,
+    UNDERSTAND_TEST_RESULTS_PROMPT,
 )
+from agent.utils import parse_action, parse_file_content, read_python_module_structure
 
-# --- Global Variables ---
-current_model = None  # Store the currently loaded model
-repo = None  # Store the Hugging Face Repository object
-model_descriptions = {}  # Store model descriptions
+# Initialize Hugging Face model and tokenizer
+TOKENIZER = AutoTokenizer.from_pretrained("typefully/rag-tokenbert-3B")
+MODEL = AutoModelForSeq2SeqLM.from_pretrained("typefully/rag-tokenbert-3B")
+PIPELINE = pipeline('text-generation', model=MODEL, tokenizer=TOKENIZER, device=-1)
 
-# --- Functions ---
-def format_prompt(message: str, history: List[Tuple[str, str]], max_history_turns: int = 2) -> str:
-    prompt = ""
-    for user_prompt, bot_response in history[-max_history_turns:]:
-        prompt += f"Human: {user_prompt}\nAssistant: {bot_response}\n"
-    prompt += f"Human: {message}\nAssistant:"
-    return prompt
+VERBOSE = False
+MAX_HISTORY = 100
 
-def generate_response(
-    prompt: str,
-    history: List[Tuple[str, str]],
-    agent_name: str = "Generic Agent",
-    sys_prompt: str = "",
-    temperature: float = TEMPERATURE,
-    max_new_tokens: int = MAX_TOKENS,
-    top_p: float = TOP_P,
-    repetition_penalty: float = REPETITION_PENALTY,
-) -> str:
-    global current_model
-    if current_model is None:
-        return "Error: Please load a model first."
+def hf_run_gpt(prompt_template, stop_tokens, max_length, module_summary, purpose, **prompt_kwargs):
+    content = PREFIX.format(module_summary=module_summary, purpose=purpose) + prompt_template.format(**prompt_kwargs)
+    if VERBOSE:
+        print(LOG_PROMPT.format(content))
 
-    date_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    full_prompt = PREFIX.format(
-        date_time_str=date_time_str,
-        purpose=sys_prompt,
-        agent_name=agent_name
-    ) + format_prompt(prompt, history)
+    input_seq = TOKENIZER(content, return_tensors='pt', truncation=True, padding='longest')['input_ids']
+    output_sequences = PIPELINE(input_seq, max_length=max_length, num_return_sequences=1, do_sample=False)
+    resp = TOKENIZER.decode(output_sequences[0]['generated_text'], skip_special_tokens=True)
 
     if VERBOSE:
-        logging.info(LOG_PROMPT.format(content=full_prompt))
+        print(LOG_RESPONSE.format(resp))
+    return resp
 
-    response = current_model(
-        full_prompt,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-        do_sample=True
-    )[0]['generated_text']
+def compress_history(purpose, task, history, directory):
+    module_summary, _, _ = read_python_module_structure(directory)
+    resp = hf_run_gpt(
+        COMPRESS_HISTORY_PROMPT,
+        stop_tokens=["observation:", "task:", "action:", "thought:"],
+        max_length=512,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    )
+    history = "observation: {}\n".format(resp)
+    return history
 
-    assistant_response = response.split("Assistant:")[-1].strip()
+def call_main(purpose, task, history, directory, action_input):
+    module_summary, _, _ = read_python_module_structure(directory)
+    resp = hf_run_gpt(
+        ACTION_PROMPT,
+        stop_tokens=["observation:", "task:"],
+        max_length=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    )
+    lines = resp.strip().split("\n")
+    for line in lines:
+        if line.startswith("thought: "):
+            history += "{}\n".format(line)
+        elif line.startswith("action: "):
+            action_name, action_input = parse_action(line)
+            history += "{}\n".format(line)
+            return action_name, action_input, history, task
+        else:
+            assert False, "unknown action: {}".format(line)
+    return "MAIN", None, history, task
 
-    if VERBOSE:
-        logging.info(LOG_RESPONSE.format(resp=assistant_response))
+def call_test(purpose, task, history, directory, action_input):
+    result = subprocess.run(
+        ["python", "-m", "pytest", "--collect-only", directory],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        history += "observation: there are no tests! Test should be written in a test folder under {}\n".format(directory)
+        return "MAIN", None, history, task
+    result = subprocess.run(
+        ["python", "-m", "pytest", directory], capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        history += "observation: tests pass\n"
+        return "MAIN", None, history, task
+    module_summary, content, _ = read_python_module_structure(directory)
+    resp = hf_run_gpt(
+        UNDERSTAND_TEST_RESULTS_PROMPT,
+        stop_tokens=[],
+        max_length=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        stdout=result.stdout[:5000],  # limit amount of text
+        stderr=result.stderr[:5000],  # limit amount of text
+    )
+    history += "observation: tests failed: {}\n".format(resp)
+    return "MAIN", None, history, task
 
-    return assistant_response
+def call_set_task(purpose, task, history, directory, action_input):
+    module_summary, content, _ = read_python_module_structure(directory)
+    task = hf_run_gpt(
+        TASK_PROMPT,
+        stop_tokens=[],
+        max_length=64,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    ).strip("\n")
+    history += "observation: task has been updated to: {}\n".format(task)
+    return "MAIN", None, history, task
 
-def load_hf_model(model_name: str):
-    """Loads a language model and fetches its description."""
-    global current_model, model_descriptions
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        current_model = pipeline(
-            "text-generation",
-            model=model_name,
-            tokenizer=tokenizer,
-            model_kwargs={"load_in_8bit": True}
+def call_read(purpose, task, history, directory, action_input):
+    if not os.path.exists(action_input):
+        history += "observation: file does not exist\n"
+        return "MAIN", None, history, task
+    module_summary, content, _ = read_python_module_structure(directory)
+    f_content = content.get(action_input, "< document is empty >")
+    resp = hf_run_gpt(
+        READ_PROMPT,
+        stop_tokens=[],
+        max_length=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        file_path=action_input,
+        file_contents=f_content,
+    ).strip("\n")
+    history += "observation: {}\n".format(resp)
+    return "MAIN", None, history, task
+
+def call_modify(purpose, task, history, directory, action_input):
+    if not os.path.exists(action_input):
+        history += "observation: file does not exist\n"
+        return "MAIN", None, history, task
+    module_summary, content, _ = read_python_module_structure(directory)
+    f_content = content.get(action_input, "< document is empty >")
+    resp = hf_run_gpt(
+        MODIFY_PROMPT,
+        stop_tokens=["action:", "thought:", "observation:"],
+        max_length=2048,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        file_path=action_input,
+        file_contents=f_content,
+    )
+    new_contents, description = parse_file_content(resp)
+    if new_contents is None:
+        history += "observation: failed to modify file\n"
+        return "MAIN", None, history, task
+
+    with open(action_input, "w") as f:
+        f.write(new_contents)
+
+    history += "observation: file successfully modified\n"
+    history += "observation: {}\n".format(description)
+    return "MAIN", None, history, task
+
+def call_add(purpose, task, history, directory, action_input):
+    d = os.path.dirname(action_input)
+    if not d.startswith(directory):
+        history += "observation: files must be under directory {}\n".format(directory)
+    elif not action_input.endswith(".py"):
+        history += "observation: can only write .py files\n"
+    else:
+        if d and not os.path.exists(d):
+            os.makedirs(d)
+        if not os.path.exists(action_input):
+            module_summary, _, _ = read_python_module_structure(directory)
+            resp = hf_run_gpt(
+                ADD_PROMPT,
+                stop_tokens=["action:", "thought:", "observation:"],
+                max_length=2048,
+                module_summary=module_summary,
+                purpose=purpose,
+                task=task,
+                history=history,
+                file_path=action_input,
+            )
+            new_contents, description = parse_file_content(resp)
+            if new_contents is None:
+                history += "observation: failed to write file\n"
+                return "MAIN", None, history, task
+
+            with open(action_input, "w") as f:
+                f.write(new_contents)
+
+            history += "observation: file successfully written\n"
+            history += "observation: {}\n".format(description)
+        else:
+            history += "observation: file already exists\n"
+    return "MAIN", None, history, task
+
+NAME_TO_FUNC = {
+    "MAIN": call_main,
+    "UPDATE-TASK": call_set_task,
+    "MODIFY-FILE": call_modify,
+    "READ-FILE": call_read,
+    "ADD-FILE": call_add,
+    "TEST": call_test,
+}
+
+def run_action(purpose, task, history, directory, action_name, action_input):
+    if action_name == "COMPLETE":
+        exit(0)
+
+    # compress the history when it is long
+    if len(history.split("\n")) > MAX_HISTORY:
+        if VERBOSE:
+            print("COMPRESSING HISTORY")
+        history = compress_history(purpose, task, history, directory)
+
+    assert action_name in NAME_TO_FUNC
+
+    print("RUN: ", action_name, action_input)
+    return NAME_TO_FUNC[action_name](purpose, task, history, directory, action_input)
+
+def run(purpose, directory, task=None):
+    history = ""
+    action_name = "UPDATE-TASK" if task is None else "MAIN"
+    action_input = None
+    while True:
+        print("")
+        print("")
+        print("---")
+        print("purpose:", purpose)
+        print("task:", task)
+        print("---")
+        print(history)
+        print("---")
+
+        action_name, action_input, history, task = run_action(
+            purpose,
+            task,
+            history,
+            directory,
+            action_name,
+            action_input,
         )
 
-        # Fetch and store the model description
-        api = HfApi()
-        model_info = api.model_info(model_name)
-        model_descriptions[model_name] = model_info.pipeline_tag
-        return f"Successfully loaded model: {model_name}"
-    except Exception as e:
-        return f"Error loading model: {str(e)}"
-
-def execute_command(command: str, project_path: str = None) -> str:
-    """Executes a shell command and returns the output."""
-    try:
-        if project_path:
-            process = subprocess.Popen(command, shell=True, cwd=project_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = process.communicate()
-        if error:
-            return f"Error: {error.decode('utf-8')}"
-        return output.decode("utf-8")
-    except Exception as e:
-        return f"Error executing command: {str(e)}"
-
-def create_hf_project(project_name: str, project_path: str = DEFAULT_PROJECT_PATH):
-    """Creates a new Hugging Face project."""
-    global repo
-    try:
-        if os.path.exists(project_path):
-            return f"Error: Directory '{project_path}' already exists!"
-        # Create the repository
-        repo = Repository(local_dir=project_path, clone_from=None)
-        repo.git_init()
-
-        # Add basic files (optional, you can customize this)
-        with open(os.path.join(project_path, "README.md"), "w") as f:
-            f.write(f"# {project_name}\n\nA new Hugging Face project.")
-
-        # Stage all changes
-        repo.git_add(pattern="*")
-        repo.git_commit(commit_message="Initial commit")
-
-        return f"Hugging Face project '{project_name}' created successfully at '{project_path}'"
-    except Exception as e:
-        return f"Error creating Hugging Face project: {str(e)}"
-
-def list_project_files(project_path: str = DEFAULT_PROJECT_PATH) -> str:
-    """Lists files in the project directory."""
-    try:
-        files = os.listdir(project_path)
-        if not files:
-            return "Project directory is empty."
-        return "\n".join(files)
-    except Exception as e:
-        return f"Error listing project files: {str(e)}"
-
-def read_file_content(file_path: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
-    """Reads and returns the content of a file in the project."""
-    try:
-        full_path = os.path.join(project_path, file_path)
-        with open(full_path, "r") as f:
-            content = f.read()
-        return content
-    except Exception as e:
-        return f"Error reading file: {str(e)}"
-
-def write_to_file(file_path: str, content: str, project_path: str = DEFAULT_PROJECT_PATH) -> str:
-    """Writes content to a file in the project."""
-    try:
-        full_path = os.path.join(project_path, file_path)
-        with open(full_path, "w") as f:
-            f.write(content)
-        return f"Successfully wrote to '{file_path}'"
-    except Exception as e:
-        return f"Error writing to file: {str(e)}"
-
-def preview_project(project_path: str = DEFAULT_PROJECT_PATH):
-    """Provides a preview of the project, if applicable."""
-    # Assuming a simple HTML preview for now
-    try:
-        index_html_path = os.path.join(project_path, "index.html")
-        if os.path.exists(index_html_path):
-            with open(index_html_path, "r") as f:
-                html_content = f.read()
-            display(HTML(html_content))
-            return "Previewing 'index.html'"
-        else:
-            return "No 'index.html' found for preview."
-    except Exception as e:
-        return f"Error previewing project: {str(e)}"
-
-def main():
-    with gr.Blocks() as demo:
-        gr.Markdown("## FragMixt: Your Hugging Face No-Code App Builder")
-
-        # --- Model Selection ---
-        with gr.Tab("Model"):
-            # --- Model Dropdown with Categories ---
-            model_categories = gr.Dropdown(
-                choices=["Text Generation", "Text Summarization", "Code Generation", "Translation", "Question Answering"],
-                label="Model Category",
-                value="Text Generation"
-            )
-            model_name = gr.Dropdown(
-                choices=[],  # Initially empty, will be populated based on category
-                label="Hugging Face Model Name",
-            )
-            load_button = gr.Button("Load Model")
-            load_output = gr.Textbox(label="Output")
-            model_description = gr.Markdown(label="Model Description")
-
-            # --- Function to populate model names based on category ---
-            def update_model_dropdown(category):
-                models = []
-                api = HfApi()
-                for model in api.list_models():
-                    if model.pipeline_tag == category:
-                        models.append(model.modelId)
-                return gr.Dropdown.update(choices=models)
-
-            # --- Event handler for category dropdown ---
-            model_categories.change(
-                fn=update_model_dropdown,
-                inputs=model_categories,
-                outputs=model_name,
-            )
-
-            # --- Event handler to display model description ---
-            def display_model_description(model_name):
-                global model_descriptions
-                if model_name in model_descriptions:
-                    return model_descriptions[model_name]
-                else:
-                    return "Model description not available."
-
-            model_name.change(
-                fn=display_model_description,
-                inputs=model_name,
-                outputs=model_description,
-            )
-
-            load_button.click(load_hf_model, inputs=model_name, outputs=load_output)
-
-        # --- Chat Interface ---
-        with gr.Tab("Chat"):
-            chatbot = gr.Chatbot(show_label=False, show_share_button=False, show_copy_button=True, likeable=True)
-            message = gr.Textbox(label="Enter your message", placeholder="Ask me anything!")
-            purpose = gr.Textbox(label="Purpose", placeholder="What is the purpose of this interaction?")
-            agent_name = gr.Dropdown(label="Agents", choices=["Generic Agent"], value="Generic Agent", interactive=True)
-            sys_prompt = gr.Textbox(label="System Prompt", max_lines=1, interactive=True)
-            temperature = gr.Slider(label="Temperature", value=TEMPERATURE, minimum=0.0, maximum=1.0, step=0.05, interactive=True, info="Higher values produce more diverse outputs")
-            max_new_tokens = gr.Slider(label="Max new tokens", value=MAX_TOKENS, minimum=0, maximum=1048 * 10, step=64, interactive=True, info="The maximum numbers of new tokens")
-            top_p = gr.Slider(label="Top-p (nucleus sampling)", value=TOP_P, minimum=0.0, maximum=1, step=0.05, interactive=True, info="Higher values sample more low-probability tokens")
-            repetition_penalty = gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY, minimum=1.0, maximum=2.0, step=0.05, interactive=True, info="Penalize repeated tokens")
-            submit_button = gr.Button(value="Send")
-            history = gr.State([])
-
-            def run_chat(purpose: str, message: str, agent_name: str, sys_prompt: str, temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float, history: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-                response = generate_response(message, history, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty)
-                history.append((message, response))
-                return history, history
-
-            submit_button.click(run_chat, inputs=[purpose, message, agent_name, sys_prompt, temperature, max_new_tokens, top_p, repetition_penalty, history], outputs=[chatbot, history])
-
-        # --- Project Management ---
-        with gr.Tab("Project"):
-            project_name = gr.Textbox(label="Project Name", placeholder="MyHuggingFaceApp")
-            create_project_button = gr.Button("Create Hugging Face Project")
-            project_output = gr.Textbox(label="Output", lines=5)
-            file_content = gr.Code(label="File Content", language="python", lines=20)
-            file_path = gr.Textbox(label="File Path (relative to project)", placeholder="src/main.py")
-            read_button = gr.Button("Read File")
-            write_button = gr.Button("Write to File")
-            command_input = gr.Textbox(label="Terminal Command", placeholder="pip install -r requirements.txt")
-            command_output = gr.Textbox(label="Command Output", lines=5)
-            run_command_button = gr.Button("Run Command")
-            preview_button = gr.Button("Preview Project")
-
-            create_project_button.click(create_hf_project, inputs=[project_name], outputs=project_output)
-            read_button.click(read_file_content, inputs=file_path, outputs=file_content)
-            write_button.click(write_to_file, inputs=[file_path, file_content], outputs=project_output)
-            run_command_button.click(execute_command, inputs=command_input, outputs=command_output)
-            preview_button.click(preview_project, outputs=project_output)
-
-demo.launch(server_port=8080)
-
 if __name__ == "__main__":
-    main()
+    # Example usage
+    run("Your purpose here", "path/to/your/directory")
