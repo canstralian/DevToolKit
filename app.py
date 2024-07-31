@@ -5,10 +5,24 @@ import base64
 import json
 from io import StringIO
 from typing import Dict, List
-
 import streamlit as st
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 from pylint import lint
+from huggingface_hub import InferenceClient
+import gradio as gr
+import random
+import prompts
+client = InferenceClient(
+    "mistralai/Mixtral-8x7B-Instruct-v0.1"
+)
+
+def format_prompt(message, history):
+  prompt = "<s>"
+  for user_prompt, bot_response in history:
+    prompt += f"[INST] {user_prompt} [/INST]"
+    prompt += f" {bot_response}</s> "
+  prompt += f"[INST] {message} [/INST]"
+  return prompt
 
 # Replace st.secrets with os.environ
 hf_token = os.environ.get("huggingface_token")
@@ -17,11 +31,6 @@ if not hf_token:
     st.error("Hugging Face API key not found. Please set the HUGGINGFACE_API_KEY environment variable.")
     st.stop()
 
-# Rest of your code here
-st.write("Hugging Face API key successfully loaded!")
-
-# Rest of your code here
-st.write("Hugging Face API key successfully loaded!")
 # Global state to manage communication between Tool Box and Workspace Chat App
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -31,13 +40,13 @@ if "workspace_projects" not in st.session_state:
     st.session_state.workspace_projects = {}
 
 # Load pre-trained RAG retriever
-rag_retriever = pipeline("text-generation", model="facebook/rag-token-base")
+rag_retriever = pipeline("text-generation", model="mistralai/Mixtral-8x7B-v0.1")
 
 # Load pre-trained chat model
-chat_model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/DialoGPT-medium")
+chat_model = AutoModelForSeq2SeqLM.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
 
 # Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
+tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
 
 def process_input(user_input: str) -> str:
     # Input pipeline: Tokenize and preprocess user input
@@ -90,7 +99,6 @@ class AIAgent:
         # - Check if the user has requested to generate code
         # - Check if the user has requested to translate code
         # - Check if the user has requested to summarize text
-        # - Check if the user has requested to analyze sentiment
 
         # Generate a response based on the analysis
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
@@ -170,7 +178,7 @@ def chat_interface_with_agent(input_text: str, agent_name: str) -> str:
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    model_name = "MaziyarPanahi/Codestral-22B-v0.1-GGUF"
+    model_name = ""
     try:
         generator = pipeline("text-generation", model=model_name)
         generator.tokenizer.pad_token = generator.tokenizer.eos_token
@@ -214,16 +222,12 @@ def summarize_text(text: str) -> str:
     summary = summarizer(text, max_length=130, min_length=30, do_sample=False)
     return summary[0]['summary_text']
 
-def sentiment_analysis(text: str) -> str:
-    analyzer = pipeline("sentiment-analysis")
-    result = analyzer(text)
-    return result[0]['label']
 
 def translate_code(code: str, source_language: str, target_language: str) -> str:
     # Use a Hugging Face translation model instead of OpenAI
     # Example: English to Spanish
     translator = pipeline(
-        "translation", model="bartowski/Codestral-22B-v0.1-GGUF")
+        "translation", model="mistralai/Mixtral-8x7B-Instruct-v0.1")
     translated_code = translator(code, target_lang=target_language)[0]['translation_text']
     return translated_code
 
@@ -239,7 +243,7 @@ def generate_code(code_idea: str, model_name: str) -> str:
 def chat_interface(input_text: str) -> str:
     """Handles general chat interactions with the user."""
     # Use a Hugging Face chatbot model or your own logic
-    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium")
+    chatbot = pipeline("text-generation", model="mistralai/Mixtral-8x7B-Instruct-v0.1")
     response = chatbot(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
     return response
 
@@ -343,13 +347,6 @@ elif app_mode == "Tool Box":
     if st.button("Summarize"):
         summary = summarize_text(text_to_summarize)
         st.write(f"Summary: {summary}")
-
-    # Sentiment Analysis Tool
-    st.subheader("Sentiment Analysis")
-    sentiment_text = st.text_area("Enter text for sentiment analysis:")
-    if st.button("Analyze Sentiment"):
-        sentiment = sentiment_analysis(sentiment_text)
-        st.write(f"Sentiment: {sentiment}")
 
     # Text Translation Tool (Code Translation)
     st.subheader("Translate Code")
