@@ -11,8 +11,16 @@ from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 from pylint import lint
 
 # Add your Hugging Face API token here
-hf_token = st.secrets["huggingface"]
+hf_token = st.secrets["huggingface"]["api_key"]
+# Accessing the secret
+try:
+    hf_token = st.secrets["huggingface"]["api_key"]
+except KeyError:
+    st.error("Hugging Face API key not found. Please configure it in your secrets.")
+    st.stop()
 
+# Rest of your code here
+st.write("Hugging Face API key successfully loaded!")
 # Global state to manage communication between Tool Box and Workspace Chat App
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
