@@ -1,20 +1,33 @@
 import os
+from huggingface_hub import InferenceClient
+import gradio as gr
+import random
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import subprocess
-
+import threading
+import time
+import json
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+# Initialize the session state
+if 'current_state' not in st.session_state:
+    st.session_state.current_state = None
+# Initialize the InferenceClient for Mixtral-8x7B-Instruct-v0.1
+client = InferenceClient("mistralai/Mixtral-8x7B-Instruct-v0.1")
+
+# Load the model and tokenizer from a different repository
+model_name = "bigscience/bloom-1b7"
+model = AutoModelForCausalLM.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 from agent.prompts import (
-    ACTION_PROMPT,
-    ADD_PROMPT,
-    COMPRESS_HISTORY_PROMPT,
-    LOG_PROMPT,
-    LOG_RESPONSE,
-    MODIFY_PROMPT,
-    PREFIX,
-    READ_PROMPT,
-    TASK_PROMPT,
-    UNDERSTAND_TEST_RESULTS_PROMPT,
+    AI_SYSTEM_PROMPT, 
+    CODE_REVIEW_ASSISTANT, 
+    CONTENT_WRITER_EDITOR,
+    PYTHON_CODE_DEV, 
+    WEB_DEV,
+    QUESTION_GENERATOR,
+    HUGGINGFACE_FILE_DEV,
 )
 from agent.utils import parse_action, parse_file_content, read_python_module_structure
 
