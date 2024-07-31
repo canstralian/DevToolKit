@@ -31,7 +31,7 @@ if "workspace_projects" not in st.session_state:
     st.session_state.workspace_projects = {}
 
 # Load pre-trained RAG retriever
-rag_retriever = pipeline("retrieval-question-answering", model="facebook/rag-token-base")
+rag_retriever = pipeline("text", model="facebook/rag-token-base")
 
 # Load pre-trained chat model
 chat_model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/DialoGPT-medium")
