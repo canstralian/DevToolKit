@@ -10,14 +10,15 @@ import streamlit as st
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 from pylint import lint
 
-# Add your Hugging Face API token here
-hf_token = st.secrets["huggingface"]["api_key"]
-# Accessing the secret
-try:
-    hf_token = st.secrets["huggingface"]["api_key"]
-except KeyError:
-    st.error("Hugging Face API key not found. Please configure it in your secrets.")
+# Replace st.secrets with os.environ
+hf_token = os.environ.get("huggingface_token")
+
+if not hf_token:
+    st.error("Hugging Face API key not found. Please set the HUGGINGFACE_API_KEY environment variable.")
     st.stop()
+
+# Rest of your code here
+st.write("Hugging Face API key successfully loaded!")
 
 # Rest of your code here
 st.write("Hugging Face API key successfully loaded!")
