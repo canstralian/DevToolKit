@@ -1,7 +1,9 @@
 import os
 import subprocess
-import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+
+import streamlit as st
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
 from agent.prompts import (
     ACTION_PROMPT,
     ADD_PROMPT,
@@ -16,33 +18,33 @@ from agent.prompts import (
 )
 from agent.utils import parse_action, parse_file_content, read_python_module_structure
 
-# Initialize Hugging Face model and tokenizer
-TOKENIZER = AutoTokenizer.from_pretrained("typefully/rag-tokenbert-3B")
-MODEL = AutoModelForSeq2SeqLM.from_pretrained("typefully/rag-tokenbert-3B")
-PIPELINE = pipeline('text-generation', model=MODEL, tokenizer=TOKENIZER, device=-1)
+# Hugging Face model and tokenizer setup
+model_name = "gpt2"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
+generator = pipeline('text-generation', model=model, tokenizer=tokenizer)
 
 VERBOSE = False
 MAX_HISTORY = 100
 
-def hf_run_gpt(prompt_template, stop_tokens, max_length, module_summary, purpose, **prompt_kwargs):
-    content = PREFIX.format(module_summary=module_summary, purpose=purpose) + prompt_template.format(**prompt_kwargs)
+def run_gpt(prompt_template, stop_tokens, max_tokens, module_summary, purpose, **prompt_kwargs):
+    content = PREFIX.format(
+        module_summary=module_summary,
+        purpose=purpose,
+    ) + prompt_template.format(**prompt_kwargs)
     if VERBOSE:
-        print(LOG_PROMPT.format(content))
-
-    input_seq = TOKENIZER(content, return_tensors='pt', truncation=True, padding='longest')['input_ids']
-    output_sequences = PIPELINE(input_seq, max_length=max_length, num_return_sequences=1, do_sample=False)
-    resp = TOKENIZER.decode(output_sequences[0]['generated_text'], skip_special_tokens=True)
-
+        st.write(LOG_PROMPT.format(content))
+    resp = generator(content, max_length=max_tokens, stop=stop_tokens)[0]["generated_text"]
     if VERBOSE:
-        print(LOG_RESPONSE.format(resp))
+        st.write(LOG_RESPONSE.format(resp))
     return resp
 
 def compress_history(purpose, task, history, directory):
     module_summary, _, _ = read_python_module_structure(directory)
-    resp = hf_run_gpt(
+    resp = run_gpt(
         COMPRESS_HISTORY_PROMPT,
         stop_tokens=["observation:", "task:", "action:", "thought:"],
-        max_length=512,
+        max_tokens=512,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
@@ -53,17 +55,19 @@ def compress_history(purpose, task, history, directory):
 
 def call_main(purpose, task, history, directory, action_input):
     module_summary, _, _ = read_python_module_structure(directory)
-    resp = hf_run_gpt(
+    resp = run_gpt(
         ACTION_PROMPT,
         stop_tokens=["observation:", "task:"],
-        max_length=256,
+        max_tokens=256,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
         history=history,
     )
-    lines = resp.strip().split("\n")
+    lines = resp.strip().strip("\n").split("\n")
     for line in lines:
+        if line == "":
+            continue
         if line.startswith("thought: "):
             history += "{}\n".format(line)
         elif line.startswith("action: "):
@@ -81,7 +85,9 @@ def call_test(purpose, task, history, directory, action_input):
         text=True,
     )
     if result.returncode != 0:
-        history += "observation: there are no tests! Test should be written in a test folder under {}\n".format(directory)
+        history += "observation: there are no tests! Test should be written in a test folder under {}\n".format(
+            directory
+        )
         return "MAIN", None, history, task
     result = subprocess.run(
         ["python", "-m", "pytest", directory], capture_output=True, text=True
@@ -90,10 +96,10 @@ def call_test(purpose, task, history, directory, action_input):
         history += "observation: tests pass\n"
         return "MAIN", None, history, task
     module_summary, content, _ = read_python_module_structure(directory)
-    resp = hf_run_gpt(
+    resp = run_gpt(
         UNDERSTAND_TEST_RESULTS_PROMPT,
         stop_tokens=[],
-        max_length=256,
+        max_tokens=256,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
@@ -106,10 +112,10 @@ def call_test(purpose, task, history, directory, action_input):
 
 def call_set_task(purpose, task, history, directory, action_input):
     module_summary, content, _ = read_python_module_structure(directory)
-    task = hf_run_gpt(
+    task = run_gpt(
         TASK_PROMPT,
         stop_tokens=[],
-        max_length=64,
+        max_tokens=64,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
@@ -123,11 +129,13 @@ def call_read(purpose, task, history, directory, action_input):
         history += "observation: file does not exist\n"
         return "MAIN", None, history, task
     module_summary, content, _ = read_python_module_structure(directory)
-    f_content = content.get(action_input, "< document is empty >")
-    resp = hf_run_gpt(
+    f_content = (
+        content[action_input] if content[action_input] else "< document is empty >"
+    )
+    resp = run_gpt(
         READ_PROMPT,
         stop_tokens=[],
-        max_length=256,
+        max_tokens=256,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
@@ -142,12 +150,18 @@ def call_modify(purpose, task, history, directory, action_input):
     if not os.path.exists(action_input):
         history += "observation: file does not exist\n"
         return "MAIN", None, history, task
-    module_summary, content, _ = read_python_module_structure(directory)
-    f_content = content.get(action_input, "< document is empty >")
-    resp = hf_run_gpt(
+    (
+        module_summary,
+        content,
+        _,
+    ) = read_python_module_structure(directory)
+    f_content = (
+        content[action_input] if content[action_input] else "< document is empty >"
+    )
+    resp = run_gpt(
         MODIFY_PROMPT,
         stop_tokens=["action:", "thought:", "observation:"],
-        max_length=2048,
+        max_tokens=2048,
         module_summary=module_summary,
         purpose=purpose,
         task=task,
@@ -178,10 +192,10 @@ def call_add(purpose, task, history, directory, action_input):
             os.makedirs(d)
         if not os.path.exists(action_input):
             module_summary, _, _ = read_python_module_structure(directory)
-            resp = hf_run_gpt(
+            resp = run_gpt(
                 ADD_PROMPT,
                 stop_tokens=["action:", "thought:", "observation:"],
-                max_length=2048,
+                max_tokens=2048,
                 module_summary=module_summary,
                 purpose=purpose,
                 task=task,
@@ -202,53 +216,31 @@ def call_add(purpose, task, history, directory, action_input):
             history += "observation: file already exists\n"
     return "MAIN", None, history, task
 
-NAME_TO_FUNC = {
-    "MAIN": call_main,
-    "UPDATE-TASK": call_set_task,
-    "MODIFY-FILE": call_modify,
-    "READ-FILE": call_read,
-    "ADD-FILE": call_add,
-    "TEST": call_test,
-}
+# Streamlit UI
+st.title("AI Powered Code Assistant")
 
-def run_action(purpose, task, history, directory, action_name, action_input):
-    if action_name == "COMPLETE":
-        exit(0)
+with st.sidebar:
+    st.header("Task Configuration")
+    purpose = st.text_input("Purpose")
+    task = st.text_input("Task")
+    directory = st.text_input("Directory")
+    action_input = st.text_input("Action Input")
+    action = st.selectbox("Action", ["main", "test", "set_task", "read", "modify", "add"])
 
-    # compress the history when it is long
-    if len(history.split("\n")) > MAX_HISTORY:
-        if VERBOSE:
-            print("COMPRESSING HISTORY")
-        history = compress_history(purpose, task, history, directory)
-
-    assert action_name in NAME_TO_FUNC
-
-    print("RUN: ", action_name, action_input)
-    return NAME_TO_FUNC[action_name](purpose, task, history, directory, action_input)
-
-def run(purpose, directory, task=None):
+if st.button("Run Action"):
     history = ""
-    action_name = "UPDATE-TASK" if task is None else "MAIN"
-    action_input = None
-    while True:
-        print("")
-        print("")
-        print("---")
-        print("purpose:", purpose)
-        print("task:", task)
-        print("---")
-        print(history)
-        print("---")
-
-        action_name, action_input, history, task = run_action(
-            purpose,
-            task,
-            history,
-            directory,
-            action_name,
-            action_input,
-        )
-
-if __name__ == "__main__":
-    # Example usage
-    run("Your purpose here", "path/to/your/directory")
+    if action == "main":
+        action_name, action_input, history, task = call_main(purpose, task, history, directory, action_input)
+    elif action == "test":
+        action_name, action_input, history, task = call_test(purpose, task, history, directory, action_input)
+    elif action == "set_task":
+        action_name, action_input, history, task = call_set_task(purpose, task, history, directory, action_input)
+    elif action == "read":
+        action_name, action_input, history, task = call_read(purpose, task, history, directory, action_input)
+    elif action == "modify":
+        action_name, action_input, history, task = call_modify(purpose, task, history, directory, action_input)
+    elif action == "add":
+        action_name, action_input, history, task = call_add(purpose, task, history, directory, action_input)
+    
+    st.subheader("History")
+    st.write(history)
