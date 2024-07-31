@@ -1,5 +1,5 @@
-streamlit==1.36.0
-transformers==4.42.4
+streamlit
+transformers
 huggingface-hub
 gradio
 black
