@@ -274,7 +274,7 @@ def main():
             run_command_button.click(execute_command, inputs=command_input, outputs=command_output)
             preview_button.click(preview_project, outputs=project_output)
 
-demo.launch(server_port=8080)
+main.launch(server_port=8080)
 
 if __name__ == "__main__":
     main()
