@@ -7,18 +7,16 @@ from safe_search import safe_search
 from i_search import google
 from i_search import i_search as i_s
 from agent import (
-    ACTION_PROMPT,
-    ADD_PROMPT,
-    COMPRESS_HISTORY_PROMPT,
-    LOG_PROMPT,
-    LOG_RESPONSE,
-    MODIFY_PROMPT,
-    PREFIX,
-    SEARCH_QUERY,
-    READ_PROMPT,
-    TASK_PROMPT,
-    UNDERSTAND_TEST_RESULTS_PROMPT,
+    run_agent,
+    create_interface,
+    format_prompt,
+    generate,
+    MAX_HISTORY,
+    client,
+    VERBOSE,
+    date_time_str,
 )
+
 from utils import parse_action, parse_file_content, read_python_module_structure
 from datetime import datetime
 
