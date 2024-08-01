@@ -299,3 +299,9 @@ additional_inputs = [
         step=0.05,
     ),
 ]
+def main():
+    interface = create_interface()
+    interface.launch()
+
+if __name__ == "__main__":
+    main()
