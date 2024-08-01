@@ -214,8 +214,6 @@ def format_prompt(message, history):
 
 agents = [
     "WEB_DEV",
-   agents = [
-    "WEB_DEV",
     "AI_SYSTEM_PROMPT",
     "PYTHON_CODE_DEV"
 ]
@@ -228,9 +226,9 @@ def generate(
     agent = prompts.WEB_DEV
     if agent_name == "WEB_DEV":
         agent = prompts.WEB_DEV
-    if agent_name == "AI_SYSTEM_PROMPT":
+    elif agent_name == "AI_SYSTEM_PROMPT":
         agent = prompts.AI_SYSTEM_PROMPT
-    if agent_name == "PYTHON_CODE_DEV":
+    elif agent_name == "PYTHON_CODE_DEV":
         agent = prompts.PYTHON_CODE_DEV
     system_prompt = agent
     temperature = float(temperature)
@@ -301,4 +299,5 @@ additional_inputs = [
         minimum=1.0,
         maximum=2.0,
         step=0.05,
-       
+    ),
+]
