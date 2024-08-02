@@ -1,8 +1,7 @@
 transformers
+transformers[torch]
 streamlit
 torch
-torchvision
-torchaudio
 black
 pylint
 opencv-python
