@@ -20,8 +20,6 @@ for message in chat_history:
     st.write(message)
 
 # Global state to manage communication between Tool Box and Workspace Chat App
-if 'chat_history' not in st.session_state:
-    st.session_state.terminal_history = []
 if 'workspace_projects' not in st.session_state:
     st.session_state.workspace_projects = {}
 if 'available_agents' not in st.session_state:
