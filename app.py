@@ -80,14 +80,10 @@ def call_search(purpose, task, history, directory, action_input):
         else:
             history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=https://URL'\n"
     except Exception as e:
-        history += "{}\n".format(line)
+        history += "{}\n".format(e)  # Fixing this line to include the exception message
     if "COMPLETE" in action_name or "COMPLETE" in action_input:
         task = "END"
     return action_name, action_input, history, task
-else:  # Indentation corrected here
-    history += "{}\n".format(line)
-return "MAIN", None, history, task
-
 def call_set_task(purpose, task, history, directory, action_input):
     task = run_gpt(
         TASK_PROMPT,
