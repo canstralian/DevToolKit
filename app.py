@@ -32,6 +32,12 @@ if 'hf_token' not in st.session_state:
     st.session_state.hf_token = None
 if 'repo_name' not in st.session_state:
     st.session_state.repo_name = None
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = None
+if 'selected_code_model' not in st.session_state:
+    st.session_state.selected_code_model = None
+if 'selected_chat_model' not in st.session_state:
+    st.session_state.selected_chat_model = None
 
 # --- Agent Class ---
 class AIAgent:
@@ -123,7 +129,7 @@ def chat_interface_with_agent(input_text, agent_name):
         return f"Agent {agent_name} not found."
 
     # Use a more powerful language model (GPT-3 or similar) for better chat experience
-    model_name = "text-davinci-003"  # Replace with your preferred GPT-3 model
+    model_name = st.session_state.selected_chat_model or "text-davinci-003"  # Default to GPT-3 if not selected
     try:
         model = transformers_pipeline("text-generation", model=model_name)
     except EnvironmentError as e:
@@ -143,7 +149,7 @@ def chat_interface_with_cluster(input_text, cluster_name):
         return f"Cluster {cluster_name} not found."
 
     # Use a more powerful language model (GPT-3 or similar) for better chat experience
-    model_name = "text-davinci-003"  # Replace with your preferred GPT-3 model
+    model_name = st.session_state.selected_chat_model or "text-davinci-003"  # Default to GPT-3 if not selected
     try:
         model = transformers_pipeline("text-generation", model=model_name)
     except EnvironmentError as e:
@@ -260,7 +266,7 @@ def translate_code(code, source_language, target_language):
 
 def generate_code(idea):
     """Generates code based on a given idea using a Hugging Face model."""
-    model_name = "bigcode/starcoder"  # Replace with your preferred code generation model
+    model_name = st.session_state.selected_code_model or "bigcode/starcoder"  # Default to Starcoder if not selected
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -488,7 +494,10 @@ with tabs[1]:
     st.subheader("Chat with AI Agents")
     selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
     agent_chat_input = st.text_area("Enter your message:")
+    chat_model_options = ["text-davinci-003", "gpt-3.5-turbo"]  # Add more chat models as needed
+    selected_chat_model = st.selectbox("Select a chat model", chat_model_options)
     if st.button("Send"):
+        st.session_state.selected_chat_model = selected_chat_model
         if selected_agent_or_cluster in st.session_state.available_agents:
             st.session_state.current_agent = selected_agent_or_cluster
             st.session_state.current_cluster = None
@@ -532,7 +541,10 @@ with tabs[2]:
     st.subheader("Chat with AI Agents")
     selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
     agent_chat_input = st.text_area("Enter your message:")
+    chat_model_options = ["text-davinci-003", "gpt-3.5-turbo"]  # Add more chat models as needed
+    selected_chat_model = st.selectbox("Select a chat model", chat_model_options)
     if st.button("Send"):
+        st.session_state.selected_chat_model = selected_chat_model
         if selected_agent_or_cluster in st.session_state.available_agents:
             st.session_state.current_agent = selected_agent_or_cluster
             st.session_state.current_cluster = None
@@ -599,7 +611,10 @@ with tabs[2]:
 
     st.write("Code Generation:")
     code_idea = st.text_input("Enter your code idea:")
+    code_model_options = ["bigcode/starcoder", "google/flan-t5-xl"]  # Add more code models as needed
+    selected_code_model = st.selectbox("Select a code generation model", code_model_options)
     if st.button("Generate"):
+        st.session_state.selected_code_model = selected_code_model
         generated_code = generate_code(code_idea)
         st.code(generated_code, language="python")
 
@@ -608,7 +623,6 @@ with tabs[2]:
     if st.session_state.current_project:
         st.write(f"Current project: {st.session_state.current_project}")
         if st.button("Build"):
-            # Implement build logic here
             build_dir = build_project(st.session_state.current_project)
             st.write(f"Project built successfully! Build directory: {build_dir}")
 
@@ -620,11 +634,9 @@ with tabs[2]:
             if st.button("Deploy to Hugging Face Spaces"):
                 st.session_state.hf_token = hf_token
                 st.session_state.repo_name = repo_name
-                # Implement Hugging Face Spaces deployment logic here
                 deploy_to_huggingface(build_dir, hf_token, repo_name)
         elif deployment_target == "Local":
             if st.button("Deploy Locally"):
-                # Implement local deployment logic here
                 deploy_locally(build_dir)
     else:
         st.warning("Please select a project first.")
