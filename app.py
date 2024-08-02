@@ -1,4 +1,3 @@
-import streamlit as st
 import subprocess
 import os
 from io import StringIO
@@ -6,6 +5,19 @@ import sys
 import black
 from pylint import lint
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+# Initialize chat_history in the session state
+
+if 'chat_history' not in st.session_state:
+    st.session_state['chat_history'] = []
+
+# Access and update chat_history
+chat_history = st.session_state['chat_history']
+chat_history.append("New message")
+
+# Display chat history
+st.write("Chat History:")
+for message in chat_history:
+    st.write(message)
 
 # Global state to manage communication between Tool Box and Workspace Chat App
 if 'chat_history' not in st.session_state:
@@ -91,12 +103,12 @@ def chat_interface_with_agent(input_text, agent_name):
     combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
     
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = 900
+    max_input_length = max_input_length
     input_ids = tokenizer.encode(combined_input, return_tensors="pt")
     if input_ids.shape[1] > max_input_length:
         input_ids = input_ids[:, :max_input_length]
 
-    outputs = model.generate(input_ids, max_length=1024, do_sample=True)
+    outputs = model.generate(input_ids, max_length=max_input_length, do_sample=True)
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
@@ -127,12 +139,12 @@ def chat_interface(input_text):
 
 
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = 900
+    max_input_length = max_input_length
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
     if input_ids.shape[1] > max_input_length:
         input_ids = input_ids[:, :max_input_length]
 
-    outputs = model.generate(input_ids, max_length=1024, do_sample=True)
+    outputs = model.generate(input_ids, max_length=max, do_sample=True)
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
@@ -264,7 +276,7 @@ def summarize_text(text):
         return f"Error loading model: {e}"
 
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = 1024
+    max_input_length = max_input_length
     inputs = text
     if len(text) > max_input_length:
         inputs = text[:max_input_length]
@@ -346,7 +358,7 @@ def generate_code(idea):
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
     output_sequences = model.generate(
         input_ids=input_ids,
-        max_length=1024,
+        max_length=max_length,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         early_stopping=True,
