@@ -6,31 +6,32 @@ import black
 import streamlit as st
 from pylint import lint
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-# Initialize chat_history in the session state
+from transformers import pipeline as transformers_pipeline
+from huggingface_hub import hf_hub_url, cached_download
+import json
+import time
+import shutil
+import gradio as gr
 
+# --- Global State ---
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
-
-# Access and update chat_history
-chat_history = st.session_state['chat_history']
-chat_history.append("New message")
-
-# Display chat history
-st.write("Chat History:")
-for message in chat_history:
-    st.write(message)
-
-# Global state to manage communication between Tool Box and Workspace Chat App
 if 'workspace_projects' not in st.session_state:
     st.session_state.workspace_projects = {}
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
+if 'available_clusters' not in st.session_state:
+    st.session_state.available_clusters = []
+if 'current_project' not in st.session_state:
+    st.session_state.current_project = None
 
+# --- Agent Class ---
 class AIAgent:
-    def __init__(self, name, description, skills):
+    def __init__(self, name, description, skills, persona_prompt=None):
         self.name = name
         self.description = description
         self.skills = skills
+        self.persona_prompt = persona_prompt
 
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
@@ -39,6 +40,8 @@ I am an AI agent named {self.name}, designed to assist developers with their pro
 My expertise lies in the following areas:
 
 {skills_str}
+
+{self.persona_prompt if self.persona_prompt else ''}
 
 I am here to help you build, deploy, and improve your applications. 
 Feel free to ask me any questions or present me with any challenges you encounter. 
@@ -59,6 +62,7 @@ I will do my best to provide helpful and insightful responses.
 
         return summary, next_step
 
+# --- Agent Management ---
 def save_agent_to_file(agent):
     """Saves the agent's prompt to a file."""
     if not os.path.exists("agents"):
@@ -78,13 +82,33 @@ def load_agent_prompt(agent_name):
     else:
         return None
 
-def create_agent_from_text(name, text):
+def create_agent_from_text(name, text, persona_prompt=None):
     skills = text.split('\n')
-    agent = AIAgent(name, "AI agent created from text input.", skills)
+    agent = AIAgent(name, "AI agent created from text input.", skills, persona_prompt)
     save_agent_to_file(agent)
     return agent.create_agent_prompt()
 
-# Chat interface using a selected agent
+# --- Cluster Management ---
+def create_agent_cluster(cluster_name, agent_names):
+    """Creates a cluster of agents."""
+    if not os.path.exists("clusters"):
+        os.makedirs("clusters")
+    cluster_path = os.path.join("clusters", f"{cluster_name}.json")
+    with open(cluster_path, "w") as file:
+        json.dump({"agents": agent_names}, file)
+    st.session_state.available_clusters.append(cluster_name)
+
+def load_agent_cluster(cluster_name):
+    """Loads an agent cluster from a file."""
+    cluster_path = os.path.join("clusters", f"{cluster_name}.json")
+    if os.path.exists(cluster_path):
+        with open(cluster_path, "r") as file:
+            cluster_data = json.load(file)
+        return cluster_data["agents"]
+    else:
+        return None
+
+# --- Chat Interface ---
 def chat_interface_with_agent(input_text, agent_name):
     agent_prompt = load_agent_prompt(agent_name)
     if agent_prompt is None:
@@ -102,7 +126,7 @@ def chat_interface_with_agent(input_text, agent_name):
     combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
     
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = max_input_length
+    max_input_length = model.config.max_length
     input_ids = tokenizer.encode(combined_input, return_tensors="pt")
     if input_ids.shape[1] > max_input_length:
         input_ids = input_ids[:, :max_input_length]
@@ -111,21 +135,11 @@ def chat_interface_with_agent(input_text, agent_name):
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
-# Define functions for each feature
+def chat_interface_with_cluster(input_text, cluster_name):
+    agent_names = load_agent_cluster(cluster_name)
+    if agent_names is None:
+        return f"Cluster {cluster_name} not found."
 
-# 1. Chat Interface
-def chat_interface(input_text):
-    """Handles user input in the chat interface.
-
-    Args:
-        input_text: User's input text.
-
-
-
-
-    Returns:
-        The chatbot's response.
-    """
     # Load the GPT-2 model which is compatible with AutoModelForCausalLM
     model_name = "gpt2"
     try:
@@ -134,57 +148,25 @@ def chat_interface(input_text):
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
-
-
+    # Combine the agent prompt with user input
+    combined_input = f"User: {input_text}\n"
+    for agent_name in agent_names:
+        agent_prompt = load_agent_prompt(agent_name)
+        combined_input += f"\n{agent_name}:\n{agent_prompt}\n"
 
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = max_input_length
-    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    max_input_length = model.config.max_length
+    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
     if input_ids.shape[1] > max_input_length:
         input_ids = input_ids[:, :max_input_length]
 
-    outputs = model.generate(input_ids, max_length=max, do_sample=True)
+    outputs = model.generate(input_ids, max_length=max_input_length, do_sample=True)
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
-
-# 2. Terminal
-def terminal_interface(command, project_name=None):
-    """Executes commands in the terminal.
-
-    Args:
-        command: User's command.
-        project_name: Name of the project workspace to add installed packages.
-
-    Returns:
-        The terminal output.
-    """
-    # Execute command
-    try:
-        process = subprocess.run(command.split(), capture_output=True, text=True)
-        output = process.stdout
-
-        # If the command is to install a package, update the workspace
-        if "install" in command and project_name:
-            requirements_path = os.path.join("projects", project_name, "requirements.txt")
-            with open(requirements_path, "a") as req_file:
-                package_name = command.split()[-1]
-                req_file.write(f"{package_name}\n")
-    except Exception as e:
-        output = f"Error: {e}"
-    return output
-
-
-# 3. Code Editor
+# --- Code Editor ---
 def code_editor_interface(code):
-    """Provides code completion, formatting, and linting in the code editor.
-
-    Args:
-        code: User's code.
-
-    Returns:
-        Formatted and linted code.
-    """
+    """Provides code completion, formatting, and linting in the code editor."""
     # Format code using black
     try:
         formatted_code = black.format_str(code, mode=black.FileMode())
@@ -205,17 +187,9 @@ def code_editor_interface(code):
 
     return formatted_code, lint_message
 
-
-# 4. Workspace
+# --- Workspace Management ---
 def workspace_interface(project_name):
-    """Manages projects, files, and resources in the workspace.
-
-    Args:
-        project_name: Name of the new project.
-
-    Returns:
-        Project creation status.
-    """
+    """Manages projects, files, and resources in the workspace."""
     project_path = os.path.join("projects", project_name)
     # Create project directory
     try:
@@ -230,16 +204,7 @@ def workspace_interface(project_name):
     return status
 
 def add_code_to_workspace(project_name, code, file_name):
-    """Adds selected code files to the workspace.
-
-    Args:
-        project_name: Name of the project.
-        code: Code to be added.
-        file_name: Name of the file to be created.
-
-    Returns:
-        File creation status.
-    """
+    """Adds selected code files to the workspace."""
     project_path = os.path.join("projects", project_name)
     file_path = os.path.join(project_path, file_name)
 
@@ -252,22 +217,9 @@ def add_code_to_workspace(project_name, code, file_name):
         status = f"Error: {e}"
     return status
 
-
-# 5. AI-Infused Tools
-
-# Define custom AI-powered tools using Hugging Face models
-
-# Example: Text summarization tool
+# --- AI Tools ---
 def summarize_text(text):
-    """Summarizes a given text using a Hugging Face model.
-
-    Args:
-        text: Text to be summarized.
-
-    Returns:
-        Summarized text.
-    """
-    # Load the summarization model
+    """Summarizes a given text using a Hugging Face model."""
     model_name = "facebook/bart-large-cnn"
     try:
         summarizer = pipeline("summarization", model=model_name)
@@ -275,7 +227,7 @@ def summarize_text(text):
         return f"Error loading model: {e}"
 
     # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = max_input_length
+    max_input_length = model.config.max_length
     inputs = text
     if len(text) > max_input_length:
         inputs = text[:max_input_length]
@@ -286,17 +238,8 @@ def summarize_text(text):
     ]
     return summary
 
-# Example: Sentiment analysis tool
 def sentiment_analysis(text):
-    """Performs sentiment analysis on a given text using a Hugging Face model.
-
-    Args:
-        text: Text to be analyzed.
-
-    Returns:
-        Sentiment analysis result.
-    """
-    # Load the sentiment analysis model
+    """Performs sentiment analysis on a given text using a Hugging Face model."""
     model_name = "distilbert-base-uncased-finetuned-sst-2-english"
     try:
         analyzer = pipeline("sentiment-analysis", model=model_name)
@@ -307,18 +250,8 @@ def sentiment_analysis(text):
     result = analyzer(text)[0]
     return result
 
-# Example: Text translation tool (code translation)
 def translate_code(code, source_language, target_language):
-    """Translates code from one programming language to another using OpenAI Codex.
-
-    Args:
-        code: Code to be translated.
-        source_language: The source programming language.
-        target_language: The target programming language.
-
-    Returns:
-        Translated code.
-    """
+    """Translates code from one programming language to another using OpenAI Codex."""
     # You might want to replace this with a Hugging Face translation model
     # for example, "Helsinki-NLP/opus-mt-en-fr"
     # Refer to Hugging Face documentation for model usage.
@@ -331,17 +264,8 @@ def translate_code(code, source_language, target_language):
         translated_code = f"Error: {e}"
     return translated_code
 
-
-# 6. Code Generation
 def generate_code(idea):
-    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model.
-    Args:
-        idea: The idea for the code to be generated.
-    Returns:
-        The generated code as a string.
-    """
-
-    # Load the code generation model
+    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model."""
     model_name = "EleutherAI/gpt-neo-2.7B"
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -357,7 +281,7 @@ def generate_code(idea):
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
     output_sequences = model.generate(
         input_ids=input_ids,
-        max_length=max_length,
+        max_length=model.config.max_length,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         early_stopping=True,
@@ -375,17 +299,9 @@ def generate_code(idea):
 
     return generated_code
 
-
-# 7. AI Personas Creator
+# --- AI Personas Creator ---
 def create_persona_from_text(text):
-    """Creates an AI persona from the given text.
-
-    Args:
-        text: Text to be used for creating the persona.
-
-    Returns:
-        Persona prompt.
-    """
+    """Creates an AI persona from the given text."""
     persona_prompt = f"""
 As an elite expert developer with the highest level of proficiency in Streamlit, Gradio, and Hugging Face, I possess a comprehensive understanding of these technologies and their applications in web development and deployment. My expertise encompasses the following areas:
 
@@ -445,48 +361,267 @@ st.write(demo)
 """
     return persona_prompt
 
+# --- Terminal Interface ---
+def terminal_interface(command, project_name=None):
+    """Executes commands in the terminal."""
+    # Execute command
+    try:
+        process = subprocess.run(command.split(), capture_output=True, text=True)
+        output = process.stdout
 
-# Streamlit App
+        # If the command is to install a package, update the workspace
+        if "install" in command and project_name:
+            requirements_path = os.path.join("projects", project_name, "requirements.txt")
+            with open(requirements_path, "a") as req_file:
+                package_name = command.split()[-1]
+                req_file.write(f"{package_name}\n")
+    except Exception as e:
+        output = f"Error: {e}"
+    return output
+
+# --- Build and Deploy ---
+def build_project(project_name):
+    """Builds a project based on the workspace files."""
+    project_path = os.path.join("projects", project_name)
+    requirements_path = os.path.join(project_path, "requirements.txt")
+    
+    # Install dependencies
+    os.chdir(project_path)
+    terminal_interface(f"pip install -r {requirements_path}")
+    os.chdir("..")
+
+    # Create a temporary directory for the built project
+    build_dir = os.path.join("build", project_name)
+    os.makedirs(build_dir, exist_ok=True)
+
+    # Copy project files to the build directory
+    for filename in os.listdir(project_path):
+        if filename == "requirements.txt":
+            continue
+        shutil.copy(os.path.join(project_path, filename), build_dir)
+
+    # Create a `main.py` file if it doesn't exist
+    main_file = os.path.join(build_dir, "main.py")
+    if not os.path.exists(main_file):
+        with open(main_file, "w") as f:
+            f.write("# Your Streamlit app code goes here\n")
+
+    # Return the path to the built project
+    return build_dir
+
+def deploy_to_huggingface(build_dir, hf_token, repo_name):
+    """Deploys the built project to Hugging Face Spaces."""
+    # Authenticate with Hugging Face
+    os.environ["HF_TOKEN"] = hf_token
+
+    # Create a new Hugging Face Space repository
+    try:
+        subprocess.run(f"huggingface-cli repo create {repo_name}", shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error creating Hugging Face Space repository: {e}")
+        return
+
+    # Upload the built project to the repository
+    try:
+        subprocess.run(f"huggingface-cli upload {repo_name} {build_dir}", shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error uploading project to Hugging Face Space repository: {e}")
+        return
+
+    # Deploy the project to Hugging Face Spaces
+    try:
+        subprocess.run(f"huggingface-cli space deploy {repo_name}", shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error deploying project to Hugging Face Spaces: {e}")
+        return
+
+    # Display the deployment URL
+    st.success(f"Project deployed successfully to Hugging Face Spaces: https://huggingface.co/spaces/{repo_name}")
+
+def deploy_locally(build_dir):
+    """Deploys the built project locally."""
+    # Run the project locally
+    os.chdir(build_dir)
+    subprocess.run("streamlit run main.py", shell=True, check=True)
+    os.chdir("..")
+
+    # Display a success message
+    st.success(f"Project deployed locally!")
+
+# --- Streamlit App ---
 st.title("AI Agent Creator")
 
-# Sidebar navigation
+# --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
+# --- AI Agent Creator ---
 if app_mode == "AI Agent Creator":
-    # AI Agent Creator
     st.header("Create an AI Agent from Text")
 
     st.subheader("From Text")
     agent_name = st.text_input("Enter agent name:")
     text_input = st.text_area("Enter skills (one per line):")
+    persona_prompt_option = st.selectbox("Choose a persona prompt", ["None", "Expert Developer"])
+    persona_prompt = None
+    if persona_prompt_option == "Expert Developer":
+        persona_prompt = create_persona_from_text("Expert Developer")
     if st.button("Create Agent"):
-        agent_prompt = create_agent_from_text(agent_name, text_input)
+        agent_prompt = create_agent_from_text(agent_name, text_input, persona_prompt)
         st.success(f"Agent '{agent_name}' created and saved successfully.")
         st.session_state.available_agents.append(agent_name)
 
+    st.subheader("Create an Agent Cluster")
+    cluster_name = st.text_input("Enter cluster name:")
+    agent_names = st.multiselect("Select agents for the cluster", st.session_state.available_agents)
+    if st.button("Create Cluster"):
+        create_agent_cluster(cluster_name, agent_names)
+        st.success(f"Cluster '{cluster_name}' created successfully.")
+        st.session_state.available_clusters.append(cluster_name)
+
+# --- Tool Box ---
 elif app_mode == "Tool Box":
-    # Tool Box
-    for project, details in st.session_state.workspace_projects.items():
-        st.write(f"Project: {project}")
-        for file in details['files']:
+    st.header("Tool Box")
+
+    # --- Workspace ---
+    st.subheader("Workspace")
+    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select")
+    if project_name:
+        st.session_state.current_project = project_name
+        for file in st.session_state.workspace_projects[project_name]['files']:
             st.write(f"  - {file}")
 
-    # Chat with AI Agents
+    # --- Chat with AI Agents ---
     st.subheader("Chat with AI Agents")
-    selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
-    agent_chat_input = st.text_area("Enter your message for the agent:")
-    if st.button("Send to Agent"):
-        agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent)
+    selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
+    agent_chat_input = st.text_area("Enter your message:")
+    if st.button("Send"):
+        if selected_agent_or_cluster in st.session_state.available_agents:
+            agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent_or_cluster)
+        elif selected_agent_or_cluster in st.session_state.available_clusters:
+            agent_chat_response = chat_interface_with_cluster(agent_chat_input, selected_agent_or_cluster)
+        else:
+            agent_chat_response = "Invalid selection."
         st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
-        st.write(f"{selected_agent}: {agent_chat_response}")
+        st.write(f"{selected_agent_or_cluster}: {agent_chat_response}")
 
-    # Automate Build Process
+    # --- Automate Build Process ---
     st.subheader("Automate Build Process")
     if st.button("Automate"):
-        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        agent = AIAgent(selected_agent_or_cluster, "", [])  # Load the agent without skills for now
         summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
         st.write("Autonomous Build Summary:")
         st.write(summary)
         st.write("Next Step:")
         st.write(next_step)
+
+# --- Workspace Chat App ---
+elif app_mode == "Workspace Chat App":
+    st.header("Workspace Chat App")
+
+    # --- Project Selection ---
+    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select")
+    if project_name:
+        st.session_state.current_project = project_name
+
+    # --- Chat with AI Agents ---
+    st.subheader("Chat with AI Agents")
+    selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
+    agent_chat_input = st.text_area("Enter your message:")
+    if st.button("Send"):
+        if selected_agent_or_cluster in st.session_state.available_agents:
+            agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent_or_cluster)
+        elif selected_agent_or_cluster in st.session_state.available_clusters:
+            agent_chat_response = chat_interface_with_cluster(agent_chat_input, selected_agent_or_cluster)
+        else:
+            agent_chat_response = "Invalid selection."
+        st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
+        st.write(f"{selected_agent_or_cluster}: {agent_chat_response}")
+
+    # --- Code Editor ---
+    st.subheader("Code Editor")
+    code = st.text_area("Enter your code:")
+    if st.button("Format & Lint"):
+        formatted_code, lint_message = code_editor_interface(code)
+        st.code(formatted_code, language="python")
+        st.write("Linting Report:")
+        st.write(lint_message)
+
+    # --- Add Code to Workspace ---
+    st.subheader("Add Code to Workspace")
+    file_name = st.text_input("Enter file name:")
+    if st.button("Add Code"):
+        if st.session_state.current_project:
+            status = add_code_to_workspace(st.session_state.current_project, code, file_name)
+            st.write(status)
+        else:
+            st.warning("Please select a project first.")
+
+    # --- Terminal ---
+    st.subheader("Terminal")
+    command = st.text_input("Enter a command:")
+    if st.button("Execute"):
+        if st.session_state.current_project:
+            output = terminal_interface(command, st.session_state.current_project)
+            st.write(output)
+        else:
+            st.warning("Please select a project first.")
+
+    # --- AI Tools ---
+    st.subheader("AI Tools")
+    st.write("Summarize Text:")
+    text_to_summarize = st.text_area("Enter text to summarize:")
+    if st.button("Summarize"):
+        summary = summarize_text(text_to_summarize)
+        st.write(summary)
+
+    st.write("Sentiment Analysis:")
+    text_to_analyze = st.text_area("Enter text to analyze:")
+    if st.button("Analyze"):
+        result = sentiment_analysis(text_to_analyze)
+        st.write(result)
+
+    st.write("Code Translation:")
+    code_to_translate = st.text_area("Enter code to translate:")
+    source_language = st.selectbox("Source Language", ["Python", "JavaScript", "C++"])
+    target_language = st.selectbox("Target Language", ["Python", "JavaScript", "C++"])
+    if st.button("Translate"):
+        translated_code = translate_code(code_to_translate, source_language, target_language)
+        st.write(translated_code)
+
+    st.write("Code Generation:")
+    code_idea = st.text_input("Enter your code idea:")
+    if st.button("Generate"):
+        generated_code = generate_code(code_idea)
+        st.code(generated_code, language="python")
+
+    # --- Build and Deploy ---
+    st.subheader("Build and Deploy")
+    if st.session_state.current_project:
+        st.write(f"Current project: {st.session_state.current_project}")
+        if st.button("Build"):
+            # Implement build logic here
+            build_dir = build_project(st.session_state.current_project)
+            st.write(f"Project built successfully! Build directory: {build_dir}")
+
+        st.write("Select a deployment target:")
+        deployment_target = st.selectbox("Deployment Target", ["Local", "Hugging Face Spaces"])
+        if deployment_target == "Hugging Face Spaces":
+            hf_token = st.text_input("Enter your Hugging Face token:")
+            repo_name = st.text_input("Enter your Hugging Face Space repository name:")
+            if st.button("Deploy to Hugging Face Spaces"):
+                # Implement Hugging Face Spaces deployment logic here
+                deploy_to_huggingface(build_dir, hf_token, repo_name)
+        elif deployment_target == "Local":
+            if st.button("Deploy Locally"):
+                # Implement local deployment logic here
+                deploy_locally(build_dir)
+    else:
+        st.warning("Please select a project first.")
+
+# --- Run the Streamlit App ---
+if __name__ == "__main__":
+    st.set_page_config(page_title="AI Agent Creator", page_icon="🤖")
+    st.write("This is the AI Agent Creator application.")
+    st.write("You can create AI agents and agent clusters, and use them to chat, generate code, and more.")
+    st.write("You can also manage your project workspace, build and deploy your projects, and use AI tools.")
