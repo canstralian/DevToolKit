@@ -77,10 +77,10 @@ def call_search(purpose, task, history, directory, action_input):
             response = i_s(action_input)
             print(response)
             history += "observation: search result is: {}\n".format(response)
-        else:
+            else:
             history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=https://URL'\n"
     except Exception as e:
-    history += "{}\n".format(line)
+        history += "{}\n".format(line)
     if "COMPLETE" in action_name or "COMPLETE" in action_input:
         task = "END"
     return action_name, action_input, history, task
