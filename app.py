@@ -6,16 +6,7 @@ import gradio as gr
 from safe_search import safe_search
 from i_search import google
 from i_search import i_search as i_s
-from agent import (
-    run_agent,
-    create_interface,
-    format_prompt,
-    generate,
-    MAX_HISTORY,
-    client,
-    VERBOSE,
-    date_time_str,
-)
+from agent import ( run_agent, create_interface, format_prompt_var, generate, MAX_HISTORY, client, VERBOSE, date_time_str, )
 
 from utils import parse_action, parse_file_content, read_python_module_structure
 from datetime import datetime
@@ -28,12 +19,11 @@ client = InferenceClient("mistralai/Mixtral-8x7B-Instruct-v0.1")
 VERBOSE = True
 MAX_HISTORY = 100
 
-def format_prompt(message, history):
-    prompt = "<s>"
+def format_prompt_var(message, history):
+    prompt = " "
     for user_prompt, bot_response in history:
-        prompt += f"[INST] {user_prompt} [/INST]"
-        prompt += f" {bot_response}</s> "
-    prompt += f"[INST] {message} [/INST]"
+        prompt += f"[INST] {user_prompt} [/usr]\n{bot_response}\n"
+    prompt += f"[INST] {message} [/usr]\n"
     return prompt
 
 def run_gpt(prompt_template, stop_tokens, max_tokens, purpose, **prompt_kwargs):
@@ -64,7 +54,6 @@ def run_gpt(prompt_template, stop_tokens, max_tokens, purpose, **prompt_kwargs):
     if VERBOSE:
         print(LOG_RESPONSE.format(resp))
     return resp
-
 def compress_history(purpose, task, history, directory):
     resp = run_gpt(
         COMPRESS_HISTORY_PROMPT,
@@ -91,33 +80,9 @@ def call_search(purpose, task, history, directory, action_input):
         else:
             history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=https://URL'\n"
     except Exception as e:
-        history += "observation: {}'\n".format(e)
-    return "MAIN", None, history, task
-
-def call_main(purpose, task, history, directory, action_input):
-    resp = run_gpt(
-        ACTION_PROMPT,
-        stop_tokens=["observation:", "task:", "action:", "thought:"],
-        max_tokens=2096,
-        purpose=purpose,
-        task=task,
-        history=history,
-    )
-    lines = resp.strip().strip("\n").split("\n")
-    for line in lines:
-        if line == "":
-            continue
-        if line.startswith("thought: "):
-            history += "{}\n".format(line)
-        elif line.startswith("action: "):
-            action_name, action_input = parse_action(line)
-            print(f'ACTION_NAME :: {action_name}')
-            print(f'ACTION_INPUT :: {action_input}')
-            history += "{}\n".format(line)
+        history += "{}\n".format(line)
             if "COMPLETE" in action_name or "COMPLETE" in action_input:
                 task = "END"
-                return action_name, action_input, history, task
-            else:
                 return action_name, action_input, history, task
         else:
             history += "{}\n".format(line)
@@ -169,14 +134,13 @@ def run_action(purpose, task, history, directory, action_name, action_input):
     except Exception as e:
         history += "observation: the previous command did not produce any useful output, I need to check the commands syntax, or use a different command\n"
         return "MAIN", None, history, task
-
 def run(purpose, history):
     task = None
     directory = "./"
     if history:
         history = str(history).strip("[]")
-    if not history:
-        history = ""
+        if not history:
+            history = ""
 
     action_name = "UPDATE-TASK" if task is None else "MAIN"
     action_input = None
@@ -201,107 +165,10 @@ def run(purpose, history):
         yield (history)
         if task == "END":
             return (history)
-
-def format_prompt(message, history):
-    prompt = "<s>"
-    for user_prompt, bot_response in history:
-        prompt += f"[INST] {user_prompt} [/INST]"
-        prompt += f" {bot_response}</s> "
-    prompt += f"[INST] {message} [/INST]"
-    return prompt
-
-agents = [
-    "WEB_DEV",
-    "AI_SYSTEM_PROMPT",
-    "PYTHON_CODE_DEV"
-]
-
-def generate(
-    prompt, history, agent_name=agents[0], sys_prompt="", temperature=0.9, max_new_tokens=256, top_p=0.95, repetition_penalty=1.0,
-):
-    seed = random.randint(1, 1111111111111111)
-
-    agent = prompts.WEB_DEV
-    if agent_name == "WEB_DEV":
-        agent = prompts.WEB_DEV
-    elif agent_name == "AI_SYSTEM_PROMPT":
-        agent = prompts.AI_SYSTEM_PROMPT
-    elif agent_name == "PYTHON_CODE_DEV":
-        agent = prompts.PYTHON_CODE_DEV
-    system_prompt = agent
-    temperature = float(temperature)
-    if temperature < 1e-2:
-        temperature = 1e-2
-    top_p = float(top_p)
-
-    generate_kwargs = dict(
-        temperature=temperature,
-        max_new_tokens=max_new_tokens,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-        do_sample=True,
-        seed=seed,
-    )
-
-    formatted_prompt = format_prompt(f"{system_prompt}, {prompt}", history)
-    stream = client.text_generation(formatted_prompt, **generate_kwargs, stream=True, details=True, return_full_text=False)
-    output = ""
-
-    for response in stream:
-        output += response.token.text
-        yield output
-    return output
-
-additional_inputs = [
-    gr.Dropdown(
-        label="Agents",
-        choices=[s for s in agents],
-        value=agents[0],
-        interactive=True,
-    ),
-    gr.Textbox(
-        label="System Prompt",
-        max_lines=1,
-        interactive=True,
-    ),
-    gr.Slider(
-        label="Temperature",
-        value=0.9,
-        minimum=0.0,
-        maximum=1.0,
-        step=0.05,
-        interactive=True,
-        info="Higher values produce more diverse outputs",
-    ),
-    gr.Slider(
-        label="Max new tokens",
-        value=1048 * 10,
-        minimum=0,
-        maximum=1048 * 10,
-        step=64,
-        interactive=True,
-        info="The maximum numbers of new tokens",
-    ),
-    gr.Slider(
-        label="Top-p (nucleus sampling)",
-        value=0.90,
-        minimum=0.0,
-        maximum=1,
-        step=0.05,
-        interactive=True,
-        info="Higher values sample more low-probability tokens",
-    ),
-    gr.Slider(
-        label="Repetition penalty",
-        value=1.2,
-        minimum=1.0,
-        maximum=2.0,
-        step=0.05,
-    ),
-]
-def main():
-    interface = create_interface()
-    interface.launch()
-
+    iface = gr.Interface(fn=run, inputs=["text", "text"], outputs="text", title="Interactive AI Assistant", description="Enter your purpose and history to interact with the AI assistant.")
+    
+    # Launch the Gradio interface
+    iface.launch(share=True)
+  
 if __name__ == "__main__":
-    main()
+    main("Sample Purpose", "Sample History")
