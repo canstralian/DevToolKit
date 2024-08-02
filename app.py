@@ -24,6 +24,14 @@ if 'available_clusters' not in st.session_state:
     st.session_state.available_clusters = []
 if 'current_project' not in st.session_state:
     st.session_state.current_project = None
+if 'current_agent' not in st.session_state:
+    st.session_state.current_agent = None
+if 'current_cluster' not in st.session_state:
+    st.session_state.current_cluster = None
+if 'hf_token' not in st.session_state:
+    st.session_state.hf_token = None
+if 'repo_name' not in st.session_state:
+    st.session_state.repo_name = None
 
 # --- Agent Class ---
 class AIAgent:
@@ -114,25 +122,19 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
-    model_name = "gpt2"
+    # Use a more powerful language model (GPT-3 or similar) for better chat experience
+    model_name = "text-davinci-003"  # Replace with your preferred GPT-3 model
     try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = transformers_pipeline("text-generation", model=model_name)
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
     # Combine the agent prompt with user input
     combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
-    
-    # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = model.config.max_length
-    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
-    if input_ids.shape[1] > max_input_length:
-        input_ids = input_ids[:, :max_input_length]
 
-    outputs = model.generate(input_ids, max_length=max_input_length, do_sample=True)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Generate response
+    response = model(combined_input, max_length=200, temperature=0.7, top_p=0.95, do_sample=True)[0]['generated_text']
+    response = response.split("Agent:")[1].strip()  # Extract the agent's response
     return response
 
 def chat_interface_with_cluster(input_text, cluster_name):
@@ -140,11 +142,10 @@ def chat_interface_with_cluster(input_text, cluster_name):
     if agent_names is None:
         return f"Cluster {cluster_name} not found."
 
-    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
-    model_name = "gpt2"
+    # Use a more powerful language model (GPT-3 or similar) for better chat experience
+    model_name = "text-davinci-003"  # Replace with your preferred GPT-3 model
     try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = transformers_pipeline("text-generation", model=model_name)
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
@@ -154,14 +155,9 @@ def chat_interface_with_cluster(input_text, cluster_name):
         agent_prompt = load_agent_prompt(agent_name)
         combined_input += f"\n{agent_name}:\n{agent_prompt}\n"
 
-    # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = model.config.max_length
-    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
-    if input_ids.shape[1] > max_input_length:
-        input_ids = input_ids[:, :max_input_length]
-
-    outputs = model.generate(input_ids, max_length=max_input_length, do_sample=True)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Generate response
+    response = model(combined_input, max_length=200, temperature=0.7, top_p=0.95, do_sample=True)[0]['generated_text']
+    response = response.split("User:")[1].strip()  # Extract the agent's response
     return response
 
 # --- Code Editor ---
@@ -251,22 +247,20 @@ def sentiment_analysis(text):
     return result
 
 def translate_code(code, source_language, target_language):
-    """Translates code from one programming language to another using OpenAI Codex."""
-    # You might want to replace this with a Hugging Face translation model
-    # for example, "Helsinki-NLP/opus-mt-en-fr"
-    # Refer to Hugging Face documentation for model usage.
-    prompt = f"Translate the following {source_language} code to {target_language}:\n\n{code}"
+    """Translates code from one programming language to another using a Hugging Face model."""
+    model_name = "Helsinki-NLP/opus-mt-en-fr"  # Replace with your preferred translation model
     try:
-        # Use a Hugging Face translation model instead of OpenAI Codex
-        # ...
-        translated_code = "Translated code"  # Replace with actual translation
-    except Exception as e:
-        translated_code = f"Error: {e}"
+        translator = pipeline("translation", model=model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Translate code
+    translated_code = translator(code, target_lang=target_language)[0]['translation_text']
     return translated_code
 
 def generate_code(idea):
-    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model."""
-    model_name = "EleutherAI/gpt-neo-2.7B"
+    """Generates code based on a given idea using a Hugging Face model."""
+    model_name = "bigcode/starcoder"  # Replace with your preferred code generation model
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -449,14 +443,13 @@ def deploy_locally(build_dir):
     st.success(f"Project deployed locally!")
 
 # --- Streamlit App ---
-st.title("AI Agent Creator")
+st.set_page_config(page_title="AI Agent Creator", page_icon="🤖")
 
-# --- Sidebar Navigation ---
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+# --- Tabs for Navigation ---
+tabs = st.tabs(["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 # --- AI Agent Creator ---
-if app_mode == "AI Agent Creator":
+with tabs[0]:
     st.header("Create an AI Agent from Text")
 
     st.subheader("From Text")
@@ -480,7 +473,7 @@ if app_mode == "AI Agent Creator":
         st.session_state.available_clusters.append(cluster_name)
 
 # --- Tool Box ---
-elif app_mode == "Tool Box":
+with tabs[1]:
     st.header("Tool Box")
 
     # --- Workspace ---
@@ -497,8 +490,12 @@ elif app_mode == "Tool Box":
     agent_chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
         if selected_agent_or_cluster in st.session_state.available_agents:
+            st.session_state.current_agent = selected_agent_or_cluster
+            st.session_state.current_cluster = None
             agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent_or_cluster)
         elif selected_agent_or_cluster in st.session_state.available_clusters:
+            st.session_state.current_agent = None
+            st.session_state.current_cluster = selected_agent_or_cluster
             agent_chat_response = chat_interface_with_cluster(agent_chat_input, selected_agent_or_cluster)
         else:
             agent_chat_response = "Invalid selection."
@@ -508,15 +505,22 @@ elif app_mode == "Tool Box":
     # --- Automate Build Process ---
     st.subheader("Automate Build Process")
     if st.button("Automate"):
-        agent = AIAgent(selected_agent_or_cluster, "", [])  # Load the agent without skills for now
-        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
-        st.write("Autonomous Build Summary:")
-        st.write(summary)
-        st.write("Next Step:")
-        st.write(next_step)
+        if st.session_state.current_agent:
+            agent = AIAgent(st.session_state.current_agent, "", [])  # Load the agent without skills for now
+            summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+            st.write("Autonomous Build Summary:")
+            st.write(summary)
+            st.write("Next Step:")
+            st.write(next_step)
+        elif st.session_state.current_cluster:
+            # Implement cluster-based automation logic here
+            # ...
+            st.warning("Cluster-based automation is not yet implemented.")
+        else:
+            st.warning("Please select an agent or cluster first.")
 
 # --- Workspace Chat App ---
-elif app_mode == "Workspace Chat App":
+with tabs[2]:
     st.header("Workspace Chat App")
 
     # --- Project Selection ---
@@ -530,8 +534,12 @@ elif app_mode == "Workspace Chat App":
     agent_chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
         if selected_agent_or_cluster in st.session_state.available_agents:
+            st.session_state.current_agent = selected_agent_or_cluster
+            st.session_state.current_cluster = None
             agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent_or_cluster)
         elif selected_agent_or_cluster in st.session_state.available_clusters:
+            st.session_state.current_agent = None
+            st.session_state.current_cluster = selected_agent_or_cluster
             agent_chat_response = chat_interface_with_cluster(agent_chat_input, selected_agent_or_cluster)
         else:
             agent_chat_response = "Invalid selection."
@@ -610,6 +618,8 @@ elif app_mode == "Workspace Chat App":
             hf_token = st.text_input("Enter your Hugging Face token:")
             repo_name = st.text_input("Enter your Hugging Face Space repository name:")
             if st.button("Deploy to Hugging Face Spaces"):
+                st.session_state.hf_token = hf_token
+                st.session_state.repo_name = repo_name
                 # Implement Hugging Face Spaces deployment logic here
                 deploy_to_huggingface(build_dir, hf_token, repo_name)
         elif deployment_target == "Local":
@@ -619,9 +629,7 @@ elif app_mode == "Workspace Chat App":
     else:
         st.warning("Please select a project first.")
 
-# --- Run the Streamlit App ---
-if __name__ == "__main__":
-    st.set_page_config(page_title="AI Agent Creator", page_icon="🤖")
-    st.write("This is the AI Agent Creator application.")
-    st.write("You can create AI agents and agent clusters, and use them to chat, generate code, and more.")
-    st.write("You can also manage your project workspace, build and deploy your projects, and use AI tools.")
+# --- Hugging Face Space Deployment (After Building) ---
+if st.session_state.hf_token and st.session_state.repo_name:
+    st.write("Deploying to Hugging Face Spaces...")
+    deploy_to_huggingface(build_dir, st.session_state.hf_token, st.session_state.repo_name)
