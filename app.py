@@ -3,6 +3,7 @@ import os
 from io import StringIO
 import sys
 import black
+import streamlit as st
 from pylint import lint
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 # Initialize chat_history in the session state
