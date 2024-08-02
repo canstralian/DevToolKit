@@ -1,6 +1,5 @@
 transformers
 streamlit
-openai
 torch
 torchvision
 torchaudio
