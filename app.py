@@ -77,7 +77,7 @@ def call_search(purpose, task, history, directory, action_input):
             response = i_s(action_input)
             print(response)
             history += "observation: search result is: {}\n".format(response)
-            else:
+        else:
             history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=https://URL'\n"
     except Exception as e:
         history += "{}\n".format(line)
