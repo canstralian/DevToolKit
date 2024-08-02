@@ -304,4 +304,4 @@ def main():
     interface.launch()
 
 if __name__ == "__main__":
-    main()
+main(launch)
