@@ -461,7 +461,7 @@ with tabs[0]:
     st.subheader("From Text")
     agent_name = st.text_input("Enter agent name:")
     text_input = st.text_area("Enter skills (one per line):")
-    persona_prompt_option = st.selectbox("Choose a persona prompt", ["None", "Expert Developer"])
+    persona_prompt_option = st.selectboxED("Choose a persona prompt", ["None", "Expert Developer"])
     persona_prompt = None
     if persona_prompt_option == "Expert Developer":
         persona_prompt = create_persona_from_text("Expert Developer")
@@ -484,7 +484,7 @@ with tabs[1]:
 
     # --- Workspace ---
     st.subheader("Workspace")
-    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select")
+    project_name = st.selectboxSP("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select")
     if project_name:
         st.session_state.current_project = project_name
         for file in st.session_state.workspace_projects[project_name]['files']:
@@ -492,10 +492,10 @@ with tabs[1]:
 
     # --- Chat with AI Agents ---
     st.subheader("Chat with AI Agents")
-    selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
+    selected_agent_or_cluster = st.selectboxSA("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
     agent_chat_input = st.text_area("Enter your message:")
     chat_model_options = ["text-davinci-003", "gpt-3.5-turbo"]  # Add more chat models as needed
-    selected_chat_model = st.selectbox("Select a chat model", chat_model_options)
+    selected_chat_model = st.selectboxSCM("Select a chat model", chat_model_options)
     if st.button("Send"):
         st.session_state.selected_chat_model = selected_chat_model
         if selected_agent_or_cluster in st.session_state.available_agents:
@@ -533,16 +533,16 @@ with tabs[2]:
     st.header("Workspace Chat App")
 
     # --- Project Selection ---
-    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select2")
+    project_name = st.selectboxSP2("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select2")
     if project_name:
         st.session_state.current_project = project_name
 
     # --- Chat with AI Agents ---
     st.subheader("Chat with AI Agents")
-    selected_agent_or_cluster = st.selectbox("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
+    selected_agent_or_cluster = st.selectboxSA2("Select an AI agent or cluster", st.session_state.available_agents + st.session_state.available_clusters)
     agent_chat_input = st.text_area("Enter your message:")
     chat_model_options = ["text-davinci-003", "gpt-3.5-turbo"]  # Add more chat models as needed
-    selected_chat_model = st.selectbox("Select a chat model", chat_model_options)
+    selected_chat_model = st.selectboxSCM2("Select a chat model", chat_model_options)
     if st.button("Send"):
         st.session_state.selected_chat_model = selected_chat_model
         if selected_agent_or_cluster in st.session_state.available_agents:
@@ -603,8 +603,8 @@ with tabs[2]:
 
     st.write("Code Translation:")
     code_to_translate = st.text_area("Enter code to translate:")
-    source_language = st.selectbox("Source Language", ["Python", "JavaScript", "C++"])
-    target_language = st.selectbox("Target Language", ["Python", "JavaScript", "C++"])
+    source_language = st.selectboxSL("Source Language", ["Python", "JavaScript", "C++"])
+    target_language = st.selectboxTL("Target Language", ["Python", "JavaScript", "C++"])
     if st.button("Translate"):
         translated_code = translate_code(code_to_translate, source_language, target_language)
         st.write(translated_code)
@@ -612,7 +612,7 @@ with tabs[2]:
     st.write("Code Generation:")
     code_idea = st.text_input("Enter your code idea:")
     code_model_options = ["bigcode/starcoder", "google/flan-t5-xl"]  # Add more code models as needed
-    selected_code_model = st.selectbox("Select a code generation model", code_model_options)
+    selected_code_model = st.selectboxGM("Select a code generation model", code_model_options)
     if st.button("Generate"):
         st.session_state.selected_code_model = selected_code_model
         generated_code = generate_code(code_idea)
@@ -627,7 +627,7 @@ with tabs[2]:
             st.write(f"Project built successfully! Build directory: {build_dir}")
 
         st.write("Select a deployment target:")
-        deployment_target = st.selectbox("Deployment Target", ["Local", "Hugging Face Spaces"])
+        deployment_target = st.selectboxDP2HF("Deployment Target", ["Local", "Hugging Face Spaces"])
         if deployment_target == "Hugging Face Spaces":
             hf_token = st.text_input("Enter your Hugging Face token:")
             repo_name = st.text_input("Enter your Hugging Face Space repository name:")
