@@ -30,12 +30,12 @@ READ_PROMPT = "read prompt"
 TASK_PROMPT = "task prompt"
 UNDERSTAND_TEST_RESULTS_PROMPT = "understand test results prompt"
 
-def format_prompt(message, history):
+def format_prompt_var(message, history):
     prompt = "\n### Instruction:\n{}\n### History:\n{}".format(message, '\n'.join(history))
     return prompt
 
 def run_agent(instruction, history):
-    prompt = format_prompt(instruction, history)
+    prompt = format_prompt_var(instruction, history)
     response = ""
     for chunk in generate(prompt, history[-MAX_HISTORY:], temperature=0.7):
         response += chunk
@@ -59,7 +59,7 @@ def generate(prompt, history, temperature):
         "do_sample": True,
         "seed": seed,
     }
-    formatted_prompt = format_prompt(f"{prompt}", history)
+    formatted_prompt = format_prompt_var(f"{prompt}", history)
     stream = client.text_generation(formatted_prompt, **generate_kwargs, stream=True, details=True, return_full_text=False)
     output = ""
     
@@ -99,7 +99,7 @@ def _clear_history(history):
 __all__ = [
     "run_agent",
     "create_interface",
-    "format_prompt",
+    "format_prompt_var",
     "generate",
     "MAX_HISTORY",
     "client",
