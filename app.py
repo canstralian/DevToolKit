@@ -533,7 +533,7 @@ with tabs[2]:
     st.header("Workspace Chat App")
 
     # --- Project Selection ---
-    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select2)
+    project_name = st.selectbox("Select a project", list(st.session_state.workspace_projects.keys()), key="project_select2")
     if project_name:
         st.session_state.current_project = project_name
 
