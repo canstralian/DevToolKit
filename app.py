@@ -1,287 +1,481 @@
-import os
+import streamlit as st
 import subprocess
-import random
-from huggingface_hub import InferenceClient
-import gradio as gr
-from safe_search import safe_search
-from i_search import google
-from i_search import i_search as i_s
-from agent import ( run_agent, create_interface, format_prompt_var, generate, MAX_HISTORY, client, VERBOSE, date_time_str, )
+import os
+from io import StringIO
+import sys
+import black
+from pylint import lint
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
-from utils import parse_action, parse_file_content, read_python_module_structure
-from datetime import datetime
+# Global state to manage communication between Tool Box and Workspace Chat App
+if 'chat_history' not in st.session_state:
+    st.session_state.terminal_history = []
+if 'workspace_projects' not in st.session_state:
+    st.session_state.workspace_projects = {}
+if 'available_agents' not in st.session_state:
+    st.session_state.available_agents = []
 
-now = datetime.now()
-date_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+class AIAgent:
+    def __init__(self, name, description, skills):
+        self.name = name
+        self.description = description
+        self.skills = skills
 
-client = InferenceClient("mistralai/Mixtral-8x7B-Instruct-v0.1")
+    def create_agent_prompt(self):
+        skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
+        agent_prompt = f"""
+I am an AI agent named {self.name}, designed to assist developers with their projects. 
+My expertise lies in the following areas:
 
-VERBOSE = True
-MAX_HISTORY = 100
+{skills_str}
 
-def format_prompt_var(message, history):
-    prompt = " "
-    for user_prompt, bot_response in history:
-        prompt += f"[INST] {user_prompt} [/usr]\n{bot_response}\n"
-    prompt += f"[INST] {message} [/usr]\n"
-    return prompt
+I am here to help you build, deploy, and improve your applications. 
+Feel free to ask me any questions or present me with any challenges you encounter. 
+I will do my best to provide helpful and insightful responses.
+"""
+        return agent_prompt
 
-def run_gpt(prompt_template, stop_tokens, max_tokens, purpose, **prompt_kwargs):
-    seed = random.randint(1, 1111111111111111)
-    print(seed)
-    generate_kwargs = dict(
-        temperature=1.0,
-        max_new_tokens=2096,
-        top_p=0.99,
-        repetition_penalty=1.0,
-        do_sample=True,
-        seed=seed,
-    )
+    def autonomous_build(self, chat_history, workspace_projects):
+        """
+        Autonomous build logic that continues based on the state of chat history and workspace projects.
+        """
+        # Example logic: Generate a summary of chat history and workspace state
+        summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
+        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
-    content = PREFIX.format(
-        date_time_str=date_time_str,
-        purpose=purpose,
-        safe_search=safe_search,
-    ) + prompt_template.format(**prompt_kwargs)
-    if VERBOSE:
-        print(LOG_PROMPT.format(content))
+        # Example: Generate the next logical step in the project
+        next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
-    stream = client.text_generation(content, **generate_kwargs, stream=True, details=True, return_full_text=False)
-    resp = ""
-    for response in stream:
-        resp += response.token.text
+        return summary, next_step
 
-    if VERBOSE:
-        print(LOG_RESPONSE.format(resp))
-    return resp
-def compress_history(purpose, task, history, directory):
-    resp = run_gpt(
-        COMPRESS_HISTORY_PROMPT,
-        stop_tokens=["observation:", "task:", "action:", "thought:"],
-        max_tokens=512,
-        purpose=purpose,
-        task=task,
-        history=history,
-    )
-    history = "observation: {}\n".format(resp)
-    return history
+def save_agent_to_file(agent):
+    """Saves the agent's prompt to a file."""
+    if not os.path.exists("agents"):
+        os.makedirs("agents")
+    file_path = os.path.join("agents", f"{agent.name}.txt")
+    with open(file_path, "w") as file:
+        file.write(agent.create_agent_prompt())
+    st.session_state.available_agents.append(agent.name)
 
-def call_search(purpose, task, history, directory, action_input):
-    print("CALLING SEARCH")
+def load_agent_prompt(agent_name):
+    """Loads an agent prompt from a file."""
+    file_path = os.path.join("agents", f"{agent_name}.txt")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as file:
+            agent_prompt = file.read()
+        return agent_prompt
+    else:
+        return None
+
+def create_agent_from_text(name, text):
+    skills = text.split('\n')
+    agent = AIAgent(name, "AI agent created from text input.", skills)
+    save_agent_to_file(agent)
+    return agent.create_agent_prompt()
+
+# Chat interface using a selected agent
+def chat_interface_with_agent(input_text, agent_name):
+    agent_prompt = load_agent_prompt(agent_name)
+    if agent_prompt is None:
+        return f"Agent {agent_name} not found."
+
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = "gpt2"
     try:
-        if "http" in action_input:
-            if "<" in action_input:
-                action_input = action_input.strip("<")
-            if ">" in action_input:
-                action_input = action_input.strip(">")
-            response = i_s(action_input)
-            print(response)
-            history += "observation: search result is: {}\n".format(response)
-        else:
-            history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=https://URL'\n"
-    except Exception as e:
-        history += "{}\n".format(e)  # Fixing this line to include the exception message
-    if "COMPLETE" in action_name or "COMPLETE" in action_input:
-        task = "END"
-    return action_name, action_input, history, task
-def call_set_task(purpose, task, history, directory, action_input):
-    task = run_gpt(
-        TASK_PROMPT,
-        stop_tokens=[],
-        max_tokens=64,
-        purpose=purpose,
-        task=task,
-        history=history,
-    ).strip("\n")
-    history += "observation: task has been updated to: {}\n".format(task)
-    return "MAIN", None, history, task
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
 
-def end_fn(purpose, task, history, directory, action_input):
-    task = "END"
-    return "COMPLETE", "COMPLETE", history, task
-
-EXAMPLE_PROJECT_DIRECTORY = './example_project/'
-
-PREFIX = """Answer the following question as accurately as possible, providing detailed responses that cover each aspect of the topic. Make sure to maintain a professional tone throughout your answers. Also please make sure to meet the safety criteria specified earlier. Question: What are the suggested approaches for creating a responsive navigation bar? Answer:"""
-LOG_PROMPT = "Prompt: {}"
-LOG_RESPONSE = "Response: {}"
-COMPRESS_HISTORY_PROMPT = """Given the context history, compress it down to something meaningful yet short enough to fit into a single chat message without exceeding over 512 tokens. Context: {}"""
-TASK_PROMPT = """Determine the correct next step in terms of actions, thoughts or observations for the following task: {}, current history: {}, current directory: {}."""
-
-NAME_TO_FUNC = {
-    "MAIN": call_main,
-    "UPDATE-TASK": call_set_task,
-    "SEARCH": call_search,
-    "COMPLETE": end_fn,
-}
-
-def _clean_up():
-    if os.path.exists(EXAMPLE_PROJECT_DIRECTORY):
-        shutil.rmtree(EXAMPLE_PROJECT_DIRECTORY)
-
-def call_main(purpose, task, history, directory, action_input=''):
-    _clean_up()
-    os.makedirs(EXAMPLE_PROJECT_DIRECTORY)
-    template = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-  <style>
-    {{%style}}
-  </style>
-</head>
-<body>
-  {{%body}}
-</body>
-</html>'''
-
-    navbar = f'''<nav>
-  <input type="checkbox" id="check">
-  <label for="check" class="checkbtn">
-    <i class="fas fa-bars"></i>
-  </label>
-  <label class="logo">LOGO</label>
-  <ul>
-    <li><a href="#home">Home</a></li>
-    <li><a href="#about">About Us</a></li>
-    <li><a href="#services">Services</a></li>
-    <li><a href="#contact">Contact Us</a></li>
-  </ul>
-</nav>'''
-
-    css = '''*{
-  box-sizing: border-box;}
-
-body {{
-  font-family: sans-serif;
-  margin: 0;
-  padding: 0;
-  background: #f4f4f4;
-}}
-
-/* Navigation */
-nav {{
-  position: fixed;
-  width: 100%;
-  height: 70px;
-  line-height: 70px;
-  z-index: 999;
-  transition: all .6s ease-in-out;
-}}
-
-nav ul {{
-  float: right;
-  margin-right: 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  list-style: none;
-}}
-
-nav li {{
-  position: relative;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  cursor: pointer;
-  padding: 0 10px;
-}}
-
-nav li:hover > ul {{
-  visibility: visible;
-  opacity: 1;
-  transform: translateY(0);
-  top: auto;
-  left:auto;
-  -webkit-transition:all 0.3s linear; /* Safari/Chrome/Opera/Gecko */
-    -moz-transition:all 0.3s linear; /* FF3.6+ */
-     -ms-transition:all 0.3s linear; /* IE10 */
-      -o-transition:all 0.3s linear; /* Opera 10.5–12.00 */
-          transition:all 0.3s linear;
-}}
-
-nav ul ul {{
-  visibility: hidden;
-  opacity: 0;
-  min-width: 180px;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.2);
-  border-radius: 0px;
-  transition: all 0.5s cubic-bezier(0.770, 0.000, 0.175, 1.000);
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 9999;
-  padding: 0;
-}}'''
-
-    with open(os.path.join(EXAMPLE_PROJECT_DIRECTORY, 'index.html'), 'w') as f:
-        f.write(template.format(body=navbar, style=css))
-
-    return "MAIN", "", f"Created a responsive navigation bar in:\n{EXAMPLE_PROJECT_DIRECTORY}", task
-
-def run_action(purpose, task, history, directory, action_name, action_input):
-    print(f'action_name::{action_name}')
-    try:
-        if "RESPONSE" in action_name or "COMPLETE" in action_name:
-            action_name = "COMPLETE"
-            task = "END"
-            return action_name, "COMPLETE", history, task
-
-        if len(history.split('\n')) > MAX_HISTORY:
-            if VERBOSE:
-                print("COMPRESSING HISTORY")
-            history = compress_history(purpose, task, history, directory)
-        if not action_name in NAME_TO_FUNC:
-            action_name = "MAIN"
-        if action_name == '' or action_name is None:
-            action_name = "MAIN"
-        assert action_name in NAME_TO_FUNC
-
-        print("RUN: ", action_name, action_input)
-        return NAME_TO_FUNC[action_name](purpose, task, history, directory, action_input)
-    except Exception as e:
-        history += "observation: the previous command did not produce any useful output, I need to check the commands syntax, or use a different command\n"
-        return "MAIN", None, history, task
-def run(purpose, history):
-    task = None
-    directory = "./"
-    if history:
-        history = str(history).strip("[]")
-        if not history:
-            history = ""
-
-    action_name = "UPDATE-TASK" if task is None else "MAIN"
-    action_input = None
-    while True:
-        print("")
-        print("")
-        print("---")
-        print("purpose:", purpose)
-        print("task:", task)
-        print("---")
-        print(history)
-        print("---")
-
-        action_name, action_input, history, task = run_action(
-            purpose,
-            task,
-            history,
-            directory,
-            action_name,
-            action_input,
-        )
-        yield (history)
-        if task == "END":
-            return (history)
-    iface = gr.Interface(fn=run, inputs=["text", "text"], outputs="text", title="Expert Web Developer Assistant Agent", description="Ask me questions, give me tasks, and I will respond accordingly.\n Example: 'Purpose: Create a contact form | Action: FORMAT INPUT' & Input: '<form><div><label for='email'>Email:</label><input type='email'/></div></form>' ")
-
+    # Combine the agent prompt with user input
+    combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
     
-    # Launch the Gradio interface
-    iface.launch(share=True)
-  
-if __name__ == "__main__":
-    main("Sample Purpose", "Sample History")
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
+
+    outputs = model.generate(input_ids, max_length=1024, do_sample=True)
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
+
+# Define functions for each feature
+
+# 1. Chat Interface
+def chat_interface(input_text):
+    """Handles user input in the chat interface.
+
+    Args:
+        input_text: User's input text.
+
+
+
+
+    Returns:
+        The chatbot's response.
+    """
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = "gpt2"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+
+
+
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
+
+    outputs = model.generate(input_ids, max_length=1024, do_sample=True)
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
+
+
+# 2. Terminal
+def terminal_interface(command, project_name=None):
+    """Executes commands in the terminal.
+
+    Args:
+        command: User's command.
+        project_name: Name of the project workspace to add installed packages.
+
+    Returns:
+        The terminal output.
+    """
+    # Execute command
+    try:
+        process = subprocess.run(command.split(), capture_output=True, text=True)
+        output = process.stdout
+
+        # If the command is to install a package, update the workspace
+        if "install" in command and project_name:
+            requirements_path = os.path.join("projects", project_name, "requirements.txt")
+            with open(requirements_path, "a") as req_file:
+                package_name = command.split()[-1]
+                req_file.write(f"{package_name}\n")
+    except Exception as e:
+        output = f"Error: {e}"
+    return output
+
+
+# 3. Code Editor
+def code_editor_interface(code):
+    """Provides code completion, formatting, and linting in the code editor.
+
+    Args:
+        code: User's code.
+
+    Returns:
+        Formatted and linted code.
+    """
+    # Format code using black
+    try:
+        formatted_code = black.format_str(code, mode=black.FileMode())
+    except black.InvalidInput:
+        formatted_code = code  # Keep original code if formatting fails
+
+    # Lint code using pylint
+    try:
+        pylint_output = StringIO()
+        sys.stdout = pylint_output
+        sys.stderr = pylint_output
+        lint.Run(['--from-stdin'], stdin=StringIO(formatted_code))
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        lint_message = pylint_output.getvalue()
+    except Exception as e:
+        lint_message = f"Pylint error: {e}"
+
+    return formatted_code, lint_message
+
+
+# 4. Workspace
+def workspace_interface(project_name):
+    """Manages projects, files, and resources in the workspace.
+
+    Args:
+        project_name: Name of the new project.
+
+    Returns:
+        Project creation status.
+    """
+    project_path = os.path.join("projects", project_name)
+    # Create project directory
+    try:
+        os.makedirs(project_path)
+        requirements_path = os.path.join(project_path, "requirements.txt")
+        with open(requirements_path, "w") as req_file:
+            req_file.write("")  # Initialize an empty requirements.txt file
+        status = f'Project "{project_name}" created successfully.'
+        st.session_state.workspace_projects[project_name] = {'files': []}
+    except FileExistsError:
+        status = f'Project "{project_name}" already exists.'
+    return status
+
+def add_code_to_workspace(project_name, code, file_name):
+    """Adds selected code files to the workspace.
+
+    Args:
+        project_name: Name of the project.
+        code: Code to be added.
+        file_name: Name of the file to be created.
+
+    Returns:
+        File creation status.
+    """
+    project_path = os.path.join("projects", project_name)
+    file_path = os.path.join(project_path, file_name)
+
+    try:
+        with open(file_path, "w") as code_file:
+            code_file.write(code)
+        status = f'File "{file_name}" added to project "{project_name}" successfully.'
+        st.session_state.workspace_projects[project_name]['files'].append(file_name)
+    except Exception as e:
+        status = f"Error: {e}"
+    return status
+
+
+# 5. AI-Infused Tools
+
+# Define custom AI-powered tools using Hugging Face models
+
+# Example: Text summarization tool
+def summarize_text(text):
+    """Summarizes a given text using a Hugging Face model.
+
+    Args:
+        text: Text to be summarized.
+
+    Returns:
+        Summarized text.
+    """
+    # Load the summarization model
+    model_name = "facebook/bart-large-cnn"
+    try:
+        summarizer = pipeline("summarization", model=model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 1024
+    inputs = text
+    if len(text) > max_input_length:
+        inputs = text[:max_input_length]
+
+    # Generate summary
+    summary = summarizer(inputs, max_length=100, min_length=30, do_sample=False)[0][
+        "summary_text"
+    ]
+    return summary
+
+# Example: Sentiment analysis tool
+def sentiment_analysis(text):
+    """Performs sentiment analysis on a given text using a Hugging Face model.
+
+    Args:
+        text: Text to be analyzed.
+
+    Returns:
+        Sentiment analysis result.
+    """
+    # Load the sentiment analysis model
+    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    try:
+        analyzer = pipeline("sentiment-analysis", model=model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Perform sentiment analysis
+    result = analyzer(text)[0]
+    return result
+
+# Example: Text translation tool (code translation)
+def translate_code(code, source_language, target_language):
+    """Translates code from one programming language to another using OpenAI Codex.
+
+    Args:
+        code: Code to be translated.
+        source_language: The source programming language.
+        target_language: The target programming language.
+
+    Returns:
+        Translated code.
+    """
+    # You might want to replace this with a Hugging Face translation model
+    # for example, "Helsinki-NLP/opus-mt-en-fr"
+    # Refer to Hugging Face documentation for model usage.
+    prompt = f"Translate the following {source_language} code to {target_language}:\n\n{code}"
+    try:
+        # Use a Hugging Face translation model instead of OpenAI Codex
+        # ...
+        translated_code = "Translated code"  # Replace with actual translation
+    except Exception as e:
+        translated_code = f"Error: {e}"
+    return translated_code
+
+
+# 6. Code Generation
+def generate_code(idea):
+    """Generates code based on a given idea using the EleutherAI/gpt-neo-2.7B model.
+    Args:
+        idea: The idea for the code to be generated.
+    Returns:
+        The generated code as a string.
+    """
+
+    # Load the code generation model
+    model_name = "EleutherAI/gpt-neo-2.7B"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    # Generate the code
+    input_text = f"""
+    # Idea: {idea}
+    # Code:
+    """
+    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+    output_sequences = model.generate(
+        input_ids=input_ids,
+        max_length=1024,
+        num_return_sequences=1,
+        no_repeat_ngram_size=2,
+        early_stopping=True,
+        temperature=0.7,  # Adjust temperature for creativity
+        top_k=50,  # Adjust top_k for diversity
+    )
+    generated_code = tokenizer.decode(output_sequences[0], skip_special_tokens=True)
+
+    # Remove the prompt and formatting
+    parts = generated_code.split("\n# Code:")
+    if len(parts) > 1:
+        generated_code = parts[1].strip()
+    else:
+        generated_code = generated_code.strip()
+
+    return generated_code
+
+
+# 7. AI Personas Creator
+def create_persona_from_text(text):
+    """Creates an AI persona from the given text.
+
+    Args:
+        text: Text to be used for creating the persona.
+
+    Returns:
+        Persona prompt.
+    """
+    persona_prompt = f"""
+As an elite expert developer with the highest level of proficiency in Streamlit, Gradio, and Hugging Face, I possess a comprehensive understanding of these technologies and their applications in web development and deployment. My expertise encompasses the following areas:
+
+Streamlit:
+* In-depth knowledge of Streamlit's architecture, components, and customization options.
+* Expertise in creating interactive and user-friendly dashboards and applications.
+* Proficiency in integrating Streamlit with various data sources and machine learning models.
+
+Gradio:
+* Thorough understanding of Gradio's capabilities for building and deploying machine learning interfaces.
+* Expertise in creating custom Gradio components and integrating them with Streamlit applications.
+* Proficiency in using Gradio to deploy models from Hugging Face and other frameworks.
+
+Hugging Face:
+* Comprehensive knowledge of Hugging Face's model hub and Transformers library.
+* Expertise in fine-tuning and deploying Hugging Face models for various NLP and computer vision tasks.
+* Proficiency in using Hugging Face's Spaces platform for model deployment and sharing.
+
+Deployment:
+* In-depth understanding of best practices for deploying Streamlit and Gradio applications.
+* Expertise in deploying models on cloud platforms such as AWS, Azure, and GCP.
+* Proficiency in optimizing deployment configurations for performance and scalability.
+
+Additional Skills:
+* Strong programming skills in Python and JavaScript.
+* Familiarity with Docker and containerization technologies.
+* Excellent communication and problem-solving abilities.
+
+I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications using Streamlit, Gradio, and Hugging Face. Please feel free to ask any questions or present any challenges you may encounter.
+
+Example:
+
+Task:
+Develop a Streamlit application that allows users to generate text using a Hugging Face model. The application should include a Gradio component for user input and model prediction.
+
+Solution:
+
+import streamlit as st
+import gradio as gr
+from transformers import pipeline
+
+# Create a Hugging Face pipeline
+huggingface_model = pipeline("text-generation")
+
+# Create a Streamlit app
+st.title("Hugging Face Text Generation App")
+
+# Define a Gradio component
+demo = gr.Interface(
+    fn=huggingface_model,
+    inputs=gr.Textbox(lines=2),
+    outputs=gr.Textbox(lines=1),
+)
+
+# Display the Gradio component in the Streamlit app
+st.write(demo)
+"""
+    return persona_prompt
+
+
+# Streamlit App
+st.title("AI Agent Creator")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+
+if app_mode == "AI Agent Creator":
+    # AI Agent Creator
+    st.header("Create an AI Agent from Text")
+
+    st.subheader("From Text")
+    agent_name = st.text_input("Enter agent name:")
+    text_input = st.text_area("Enter skills (one per line):")
+    if st.button("Create Agent"):
+        agent_prompt = create_agent_from_text(agent_name, text_input)
+        st.success(f"Agent '{agent_name}' created and saved successfully.")
+        st.session_state.available_agents.append(agent_name)
+
+elif app_mode == "Tool Box":
+    # Tool Box
+    for project, details in st.session_state.workspace_projects.items():
+        st.write(f"Project: {project}")
+        for file in details['files']:
+            st.write(f"  - {file}")
+
+    # Chat with AI Agents
+    st.subheader("Chat with AI Agents")
+    selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
+    agent_chat_input = st.text_area("Enter your message for the agent:")
+    if st.button("Send to Agent"):
+        agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent)
+        st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
+        st.write(f"{selected_agent}: {agent_chat_response}")
+
+    # Automate Build Process
+    st.subheader("Automate Build Process")
+    if st.button("Automate"):
+        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
