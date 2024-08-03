@@ -254,7 +254,7 @@ if st.button("Run Collaborative Task"):
 st.sidebar.subheader("Current State")
 st.sidebar.json(st.session_state)
 if st.session_state.active_agent:
-display_agent_info(st.session_state.active_agent)
+    display_agent_info(st.session_state.active_agent)
 display_workspace_projects()
 display_chat_history()
 
