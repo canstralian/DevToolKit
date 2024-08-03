@@ -196,7 +196,7 @@ if st.button("Automate"):
 
 # --- Display Information ---
 st.sidebar.subheader("Current State")
-st.sidebar.json(st.session_state, indent=2)
+st.sidebar.json(st.session_state)
 if st.session_state.active_agent:
     display_agent_info(st.session_state.active_agent)
 display_workspace_projects()
