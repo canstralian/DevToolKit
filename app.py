@@ -13,6 +13,10 @@ from langchain_community.chains import ConversationChain
 from langchain_community.memory import ConversationBufferMemory
 from langchain_community.chains.question_answering import load_qa_chain
 from langchain_community.utils import CharacterTextSplitter
+from transformers import BertTokenizerFast
+
+# Download the DistilBERT tokenizer (~3 MB)
+DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased').save_pretrained('./cache/distilbert-base-uncased-local')
 
 # --- Constants ---
 MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
