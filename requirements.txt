@@ -15,3 +15,4 @@ GitPython
 pytest
 faiss-cpu
 huggingface_hub
+streamlit-ace
