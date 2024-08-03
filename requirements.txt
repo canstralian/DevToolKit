@@ -5,6 +5,8 @@ torch
 black
 pylint
 langchain
+langchain-community
+langchain-core
 opencv-python
 gradio
 cookiecutter
