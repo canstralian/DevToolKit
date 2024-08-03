@@ -13,29 +13,31 @@ from rich.progress import track
 from rich.table import Table
 import subprocess
 import threading
+import git
 from langchain.llms import HuggingFaceHub
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain.chains.question_answering import load_qa_chain
-from langchain.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM, Seq2SeqLMForCausalGeneration
-
-def create_causal_lm(model_name: str):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).causal_decoder
-    return model, tokenizer
-
-AutoModelForCausalLM = lambda model_name: create_causal_lm(model_name)[0]
-AutoTokenizerForCausalLM = lambda model_name: create_causal_lm(model_name)[1]
-
+from langchain_community.document_loaders import TextLoader
+from streamlit_ace import st_ace
+from streamlit_chat import st_chat
 
 # --- Constants ---
-MODEL_NAME = "bigscience/bloom-1b7"
-MAX_NEW_TOKENS = 1024
+MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
+MAX_NEW_TOKENS = 2048  # Increased for better code generation
 TEMPERATURE = 0.7
 TOP_P = 0.95
 REPETITION_PENALTY = 1.2
+
+# --- Model & Tokenizer ---
+@st.cache_resource
+def load_model_and_tokenizer():
+    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map="auto")  # Use 'auto' for optimal device selection
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    return model, tokenizer
+
+model, tokenizer = load_model_and_tokenizer()
 
 # --- Agents ---
 agents = {
@@ -57,22 +59,7 @@ agents = {
     "CODE_REVIEW_ASSISTANT": {
         "description": "Expert in code review and quality assurance.",
         "skills": ["Code Style", "Best Practices", "Security", "Performance", "Maintainability"],
-        "system_prompt": "You are a code review assistant. Your goal is to assist the user in reviewing code for quality and efficiency. Provide feedback on code style, best practices, security, performance, and maintainability.",
-    },
-    "CONTENT_WRITER_EDITOR": {
-        "description": "Expert in content writing and editing.",
-        "skills": ["Grammar", "Style", "Clarity", "Conciseness", "SEO"],
-        "system_prompt": "You are a content writer and editor. Your goal is to assist the user in creating high-quality content. Provide suggestions on grammar, style, clarity, conciseness, and SEO.",
-    },
-    "QUESTION_GENERATOR": {
-        "description": "Expert in generating questions for learning and assessment.",
-        "skills": ["Question Types", "Cognitive Levels", "Assessment Design"],
-        "system_prompt": "You are a question generator. Your goal is to assist the user in generating questions for learning and assessment. Provide questions that are relevant to the topic and aligned with the cognitive levels.",
-    },
-    "HUGGINGFACE_FILE_DEV": {
-        "description": "Expert in developing Hugging Face files for machine learning models.",
-        "skills": ["Transformers", "Datasets", "Model Training", "Model Deployment"],
-        "system_prompt": "You are a Hugging Face file development expert. Your goal is to assist the user in creating and deploying Hugging Face files for machine learning models. Provide code snippets, explanations, and guidance on best practices.",
+        "system_prompt": "You are a code review expert. Your goal is to assist the user in reviewing and improving their code. Provide feedback on code quality, style, and best practices.",
     },
 }
 
@@ -87,17 +74,8 @@ if "selected_agents" not in st.session_state:
     st.session_state.selected_agents = []
 if "current_project" not in st.session_state:
     st.session_state.current_project = None
-if "current_agent" not in st.session_state:
-    st.session_state.current_agent = None
-if "current_cluster" not in st.session_state:
-    st.session_state.current_cluster = None
-if "hf_token" not in st.session_state:
-    st.session_state.hf_token = None
-if "repo_name" not in st.session_state:
-    st.session_state.repo_name = None
-if "selected_model" not in st.session_state:
-    st.session_state.selected_model = None
 
+# --- Helper Functions ---
 def add_code_to_workspace(project_name: str, code: str, file_name: str):
     if project_name in st.session_state.workspace_projects:
         st.session_state.workspace_projects[project_name]['files'].append({'file_name': file_name, 'code': code})
@@ -112,18 +90,58 @@ def terminal_interface(command: str, project_name: str):
     else:
         return f"Project {project_name} does not exist"
 
-def chat_interface(message: str, selected_agents: List[str]):
-    responses = {}
-    for agent in selected_agents:
-        responses[agent] = get_agent_response(message, agents[agent]['system_prompt'])
-    return responses
-
 def get_agent_response(message: str, system_prompt: str):
-    llm = HuggingFaceHub(repo_id=MODEL_NAME, model_kwargs={"temperature": TEMPERATURE, "top_p": TOP_P, "repetition_penalty": REPETITION_PENALTY})
+    llm = HuggingFaceHub(repo_id=MODEL_NAME, model_kwargs={"temperature": TEMPERATURE, "top_p": TOP_P, "repetition_penalty": REPETITION_PENALTY, "max_length": MAX_NEW_TOKENS})
     memory = ConversationBufferMemory()
     conversation = ConversationChain(llm=llm, memory=memory)
     response = conversation.run(system_prompt + "\n" + message)
     return response
+
+def display_agent_info(agent_name: str):
+    agent = agents[agent_name]
+    st.sidebar.subheader(f"Active Agent: {agent_name}")
+    st.sidebar.write(f"Description: {agent['description']}")
+    st.sidebar.write(f"Skills: {', '.join(agent['skills'])}")
+
+def display_workspace_projects():
+    st.subheader("Workspace Projects")
+    for project_name, project_data in st.session_state.workspace_projects.items():
+        with st.expander(project_name):
+            for file in project_data['files']:
+                st.text(file['file_name'])
+                st.code(file['code'], language="python")
+
+def display_chat_history():
+    st.subheader("Chat History")
+    for message in st.session_state.chat_history:
+        st.text(message)
+
+def run_autonomous_build(selected_agents: List[str], project_name: str):
+    st.info("Starting autonomous build process...")
+    for agent in selected_agents:
+        st.write(f"Agent {agent} is working on the project...")
+        code = get_agent_response(f"Generate code for a simple web application in project {project_name}", agents[agent]['system_prompt'])
+        add_code_to_workspace(project_name, code, f"{agent.lower()}_app.py")
+        st.write(f"Agent {agent} has completed its task.")
+    st.success("Autonomous build process completed!")
+
+def collaborative_agent_example(selected_agents: List[str], project_name: str, task: str):
+    st.info(f"Starting collaborative task: {task}")
+    responses = {}
+    for agent in selected_agents:
+        st.write(f"Agent {agent} is working on the task...")
+        response = get_agent_response(task, agents[agent]['system_prompt'])
+        responses[agent] = response
+    
+    combined_response = combine_and_process_responses(responses, task)
+    st.success("Collaborative task completed!")
+    st.write(combined_response)
+
+def combine_and_process_responses(responses: Dict[str, str], task: str) -> str:
+    # This is a placeholder function. In a real-world scenario, you would implement
+    # more sophisticated logic to combine and process the responses.
+    combined = "\n\n".join([f"{agent}: {response}" for agent, response in responses.items()])
+    return f"Combined response for task '{task}':\n\n{combined}"
 
 # --- Streamlit UI ---
 st.title("DevToolKit: AI-Powered Development Environment")
@@ -132,26 +150,45 @@ st.title("DevToolKit: AI-Powered Development Environment")
 st.header("Project Management")
 project_name = st.text_input("Enter project name:")
 if st.button("Create Project"):
-    if project_name not in st.session_state.workspace_projects:
+    if project_name and project_name not in st.session_state.workspace_projects:
         st.session_state.workspace_projects[project_name] = {'files': []}
         st.success(f"Created project: {project_name}")
-    else:
+    elif project_name in st.session_state.workspace_projects:
         st.warning(f"Project {project_name} already exists")
+    else:
+        st.warning("Please enter a project name")
 
-# --- Code Addition ---
-st.subheader("Add Code to Workspace")
-code_to_add = st.text_area("Enter code to add to workspace:")
-file_name = st.text_input("Enter file name (e.g. 'app.py'):")
-if st.button("Add Code"):
-    add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
-    st.success(add_code_status)
+# --- Code Editor ---
+st.subheader("Code Editor")
+if st.session_state.workspace_projects:
+    selected_project = st.selectbox("Select project", list(st.session_state.workspace_projects.keys()))
+    if selected_project:
+        files = [file['file_name'] for file in st.session_state.workspace_projects[selected_project]['files']]
+        selected_file = st.selectbox("Select file to edit", files) if files else None
+        if selected_file:
+            file_content = next((file['code'] for file in st.session_state.workspace_projects[selected_project]['files'] if file['file_name'] == selected_file), "")
+            edited_code = st_ace(value=file_content, language="python", theme="monokai", key="code_editor")
+            if st.button("Save Changes"):
+                for file in st.session_state.workspace_projects[selected_project]['files']:
+                    if file['file_name'] == selected_file:
+                        file['code'] = edited_code
+                        st.success("Changes saved successfully!")
+                        break
+        else:
+            st.info("No files in the project. Use the chat interface to generate code.")
+else:
+    st.info("No projects created yet. Create a project to start coding.")
 
 # --- Terminal Interface ---
 st.subheader("Terminal (Workspace Context)")
-terminal_input = st.text_input("Enter a command within the workspace:")
-if st.button("Run Command"):
-    terminal_output = terminal_interface(terminal_input, project_name)
-    st.code(terminal_output, language="bash")
+if st.session_state.workspace_projects:
+    selected_project = st.selectbox("Select project for terminal", list(st.session_state.workspace_projects.keys()))
+    terminal_input = st.text_input("Enter a command within the workspace:")
+    if st.button("Run Command"):
+        terminal_output = terminal_interface(terminal_input, selected_project)
+        st.code(terminal_output, language="bash")
+else:
+    st.info("No projects created yet. Create a project to use the terminal.")
 
 # --- Chat Interface ---
 st.subheader("Chat with AI Agents")
@@ -159,8 +196,17 @@ selected_agents = st.multiselect("Select AI agents", list(agents.keys()), key="a
 st.session_state.selected_agents = selected_agents
 agent_chat_input = st.text_area("Enter your message for the agents:", key="agent_input")
 if st.button("Send to Agents", key="agent_send"):
-    agent_chat_response = chat_interface(agent_chat_input, selected_agents)
-    st.write(agent_chat_response)
+    if selected_agents and agent_chat_input:
+        responses = {}
+        for agent in selected_agents:
+            response = get_agent_response(agent_chat_input, agents[agent]['system_prompt'])
+            responses[agent] = response
+        st.session_state.chat_history.append(f"User: {agent_chat_input}")
+        for agent, response in responses.items():
+            st.session_state.chat_history.append(f"{agent}: {response}")
+        st_chat(st.session_state.chat_history)  # Display chat history using st_chat
+    else:
+        st.warning("Please select at least one agent and enter a message.")
 
 # --- Agent Control ---
 st.subheader("Agent Control")
@@ -177,10 +223,34 @@ for agent_name in agents:
 # --- Automate Build Process ---
 st.subheader("Automate Build Process")
 if st.button("Automate"):
-    if st.session_state.selected_agents:
+    if st.session_state.selected_agents and project_name:
         run_autonomous_build(st.session_state.selected_agents, project_name)
     else:
-        st.warning("Please select at least one agent.")
+        st.warning("Please select at least one agent and create a project.")
+
+# --- Version Control ---
+st.subheader("Version Control")
+repo_url = st.text_input("Enter repository URL:")
+if st.button("Clone Repository"):
+    if repo_url and project_name:
+        try:
+            git.Repo.clone_from(repo_url, project_name)
+            st.success(f"Repository cloned successfully to {project_name}")
+        except git.GitCommandError as e:
+            st.error(f"Error cloning repository: {e}")
+    else:
+        st.warning("Please enter a repository URL and create a project.")
+
+# --- Collaborative Agent Example ---
+st.subheader("Collaborative Agent Example")
+collab_agents = st.multiselect("Select AI agents for collaboration", list(agents.keys()), key="collab_agent_select")
+collab_project = st.text_input("Enter project name for collaboration:")
+collab_task = st.text_input("Enter a task for the agents to collaborate on:")
+if st.button("Run Collaborative Task"):
+    if collab_agents and collab_project and collab_task:
+        collaborative_agent_example(collab_agents, collab_project, collab_task)
+    else:
+        st.warning("Please select agents, enter a project name, and specify a task.")
 
 # --- Display Information ---
 st.sidebar.subheader("Current State")
@@ -190,100 +260,6 @@ if st.session_state.active_agent:
 display_workspace_projects()
 display_chat_history()
 
-# --- Gradio Interface ---
-additional_inputs = [
-    gr.Dropdown(label="Agents", choices=[s for s in agents.keys()], value=list(agents.keys())[0], interactive=True),
-    gr.Textbox(label="System Prompt", max_lines=1, interactive=True),
-    gr.Slider(label="Temperature", value=TEMPERATURE, minimum=0.0, maximum=1.0, step=0.05, interactive=True, info="Higher values produce more diverse outputs"),
-    gr.Slider(label="Max new tokens", value=MAX_NEW_TOKENS, minimum=0, maximum=10240, step=64, interactive=True, info="The maximum numbers of new tokens"),
-    gr.Slider(label="Top-p (nucleus sampling)", value=TOP_P, minimum=0.0, maximum=1, step=0.05, interactive=True, info="Higher values sample more low-probability tokens"),
-    gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY, minimum=1.0, maximum=2.0, step=0.05, interactive=True, info="Penalize repeated tokens"),
-]
-
-examples = [
-    ["Create a simple web application using Flask", "WEB_DEV"],
-    ["Generate a Python script to perform a linear regression analysis", "PYTHON_CODE_DEV"],
-    ["Create a Dockerfile for a Node.js application", "AI_SYSTEM_PROMPT"],
-    # Add more examples as needed
-]
-
-gr.ChatInterface(
-    fn=chat_interface,
-    chatbot=gr.Chatbot(show_label=False, show_share_button=False, show_copy_button=True, likeable=True, layout="panel"),
-    additional_inputs=additional_inputs,
-    title="DevToolKit AI Assistant",
-    examples=examples,
-    concurrency_limit=20,
-).launch(show_api=True)
-
-# --- Helper Functions ---
-
-def display_agent_info(agent_name: str):
-    agent = agents[agent_name]
-    st.sidebar.subheader(f"Active Agent: {agent_name}")
-    st.sidebar.write(f"Description: {agent['description']}")
-    st.sidebar.write(f"Skills: {', '.join(agent['skills'])}")
-
-def display_workspace_projects():
-    st.sidebar.subheader("Workspace Projects")
-    if st.session_state.workspace_projects:
-        for project_name in st.session_state.workspace_projects:
-            st.sidebar.write(f"- {project_name}")
-    else:
-        st.sidebar.write("No projects created yet.")
-
-def display_chat_history():
-    st.sidebar.subheader("Chat History")
-    if st.session_state.chat_history:
-        for message in st.session_state.chat_history:
-            st.sidebar.write(message)
-    else:
-        st.sidebar.write("No chat history yet.")
-
-def run_autonomous_build(selected_agents: List[str], project_name: str):
-    # This function should implement the autonomous build process
-    # It should use the selected agents and the project name to generate code and run commands
-    # You can use the `get_agent_response` function to get responses from agents
-    # You can use the `add_code_to_workspace` and `terminal_interface` functions to manage the workspace
-    st.write("Running autonomous build...")
-    for agent in selected_agents:
-        # Example: Get code from the agent
-        code = get_agent_response(f"Generate code for a simple web application in project {project_name}", agents[agent]['system_prompt'])
-        # Example: Add code to the workspace
-        add_code_to_workspace(project_name, code, "app.py")
-        # Example: Run a command in the workspace
-        terminal_interface("python app.py", project_name)
-    st.write("Autonomous build completed.")
-
-# --- Collaborative Agent Example ---
-
-def collaborative_agent_example(selected_agents: List[str], project_name: str, task: str):
-    # Example: Collaborative code generation
-    st.write(f"Running collaborative task: {task}")
-    responses = []
-    for agent in selected_agents:
-        response = get_agent_response(f"As a {agent}, please contribute to the following task: {task}", agents[agent]['system_prompt'])
-        responses.append(response)
-
-    # Combine responses and process them
-    combined_response = "\n".join(responses)
-    st.write(f"Combined response:\n{combined_response}")
-
-    # Example: Use code review agent for feedback
-    if "CODE_REVIEW_ASSISTANT" in selected_agents:
-        review_response = get_agent_response(f"Review the following code and provide feedback: {combined_response}", agents["CODE_REVIEW_ASSISTANT"]['system_prompt'])
-        st.write(f"Code Review Feedback:\n{review_response}")
-
-    # Example: Use content writer for documentation
-    if "CONTENT_WRITER_EDITOR" in selected_agents:
-        documentation_response = get_agent_response(f"Generate documentation for the following code: {combined_response}", agents["CONTENT_WRITER_EDITOR"]['system_prompt'])
-        st.write(f"Documentation:\n{documentation_response}")
-
-# --- Streamlit UI for Collaborative Agent Example ---
-
-st.subheader("Collaborative Agent Example")
-selected_agents_example = st.multiselect("Select AI agents for collaboration", list(agents.keys()), key="agent_select_example")
-project_name_example = st.text_input("Enter project name (for example purposes):")
-task_example = st.text_input("Enter a task for the agents to collaborate on:")
-if st.button("Run Collaborative Task"):
-    collaborative_agent_example(selected_agents_example, project_name_example, task_example)
+if __name__ == "__main__":
+    st.sidebar.title("DevToolKit")
+    st.sidebar.info("This is an AI-powered development environment.")
