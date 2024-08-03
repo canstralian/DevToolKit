@@ -19,6 +19,16 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains.question_answering import load_qa_chain
 from langchain.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM, Seq2SeqLMForCausalGeneration
+
+def create_causal_lm(model_name: str):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).causal_decoder
+    return model, tokenizer
+
+AutoModelForCausalLM = lambda model_name: create_causal_lm(model_name)[0]
+AutoTokenizerForCausalLM = lambda model_name: create_causal_lm(model_name)[1]
+
 
 # --- Constants ---
 MODEL_NAME = "bigscience/bloom-1b7"
@@ -26,10 +36,6 @@ MAX_NEW_TOKENS = 1024
 TEMPERATURE = 0.7
 TOP_P = 0.95
 REPETITION_PENALTY = 1.2
-
-# --- Model & Tokenizer ---
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
 # --- Agents ---
 agents = {
