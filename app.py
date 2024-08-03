@@ -104,8 +104,15 @@ def display_workspace_projects():
 
 def display_chat_history():
     st.subheader("Chat History")
-    for message in st.session_state.chat_history:
-        st.text(message)
+    html_string = ""
+    for idx, message in enumerate(st.session_state.chat_history):
+        if idx % 2 == 0:
+           role = "User:"
+        else:
+           role = "Assistant:"
+        html_string += f"<p>{role}</p>"
+        html_string += f"<p>{message}</p>"
+    st.markdown(html_string, unsafe_allow_html=True)
 
 def run_autonomous_build(selected_agents: List[str], project_name: str):
     st.info("Starting autonomous build process...")
