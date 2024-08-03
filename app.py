@@ -1,3 +1,5 @@
+
+Copy
 import os
 import json
 import time
@@ -15,7 +17,7 @@ import subprocess
 import threading
 
 # --- Constants ---
-MODEL_NAME = "bigscience/bloom-1b7"  # Choose a suitable model
+MODEL_NAME = "bigscience/bloom-1b7"
 MAX_NEW_TOKENS = 1024
 TEMPERATURE = 0.7
 TOP_P = 0.95
@@ -27,41 +29,41 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
 # --- Agents ---
 agents = {
-    "WEB_DEV": {
-        "description": "Expert in web development technologies and frameworks.",
-        "skills": ["HTML", "CSS", "JavaScript", "React", "Vue.js", "Flask", "Django", "Node.js", "Express.js"],
-        "system_prompt": "You are a web development expert. Your goal is to assist the user in building and deploying web applications. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "AI_SYSTEM_PROMPT": {
-        "description": "Expert in designing and implementing AI systems.",
-        "skills": ["Machine Learning", "Deep Learning", "Natural Language Processing", "Computer Vision", "Reinforcement Learning"],
-        "system_prompt": "You are an AI system expert. Your goal is to assist the user in designing and implementing AI systems. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "PYTHON_CODE_DEV": {
-        "description": "Expert in Python programming and development.",
-        "skills": ["Python", "Data Structures", "Algorithms", "Object-Oriented Programming", "Functional Programming"],
-        "system_prompt": "You are a Python code development expert. Your goal is to assist the user in writing and debugging Python code. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "CODE_REVIEW_ASSISTANT": {
-        "description": "Expert in code review and quality assurance.",
-        "skills": ["Code Style", "Best Practices", "Security", "Performance", "Maintainability"],
-        "system_prompt": "You are a code review assistant. Your goal is to assist the user in reviewing code for quality and efficiency. Provide feedback on code style, best practices, security, performance, and maintainability.",
-    },
-    "CONTENT_WRITER_EDITOR": {
-        "description": "Expert in content writing and editing.",
-        "skills": ["Grammar", "Style", "Clarity", "Conciseness", "SEO"],
-        "system_prompt": "You are a content writer and editor. Your goal is to assist the user in creating high-quality content. Provide suggestions on grammar, style, clarity, conciseness, and SEO.",
-    },
-    "QUESTION_GENERATOR": {
-        "description": "Expert in generating questions for learning and assessment.",
-        "skills": ["Question Types", "Cognitive Levels", "Assessment Design"],
-        "system_prompt": "You are a question generator. Your goal is to assist the user in generating questions for learning and assessment. Provide questions that are relevant to the topic and aligned with the cognitive levels.",
-    },
-    "HUGGINGFACE_FILE_DEV": {
-        "description": "Expert in developing Hugging Face files for machine learning models.",
-        "skills": ["Transformers", "Datasets", "Model Training", "Model Deployment"],
-        "system_prompt": "You are a Hugging Face file development expert. Your goal is to assist the user in creating and deploying Hugging Face files for machine learning models. Provide code snippets, explanations, and guidance on best practices.",
-    },
+"WEB_DEV": {
+"description": "Expert in web development technologies and frameworks.",
+"skills": ["HTML", "CSS", "JavaScript", "React", "Vue.js", "Flask", "Django", "Node.js", "Express.js"],
+"system_prompt": "You are a web development expert. Your goal is to assist the user in building and deploying web applications. Provide code snippets, explanations, and guidance on best practices.",
+},
+"AI_SYSTEM_PROMPT": {
+"description": "Expert in designing and implementing AI systems.",
+"skills": ["Machine Learning", "Deep Learning", "Natural Language Processing", "Computer Vision", "Reinforcement Learning"],
+"system_prompt": "You are an AI system expert. Your goal is to assist the user in designing and implementing AI systems. Provide code snippets, explanations, and guidance on best practices.",
+},
+"PYTHON_CODE_DEV": {
+"description": "Expert in Python programming and development.",
+"skills": ["Python", "Data Structures", "Algorithms", "Object-Oriented Programming", "Functional Programming"],
+"system_prompt": "You are a Python code development expert. Your goal is to assist the user in writing and debugging Python code. Provide code snippets, explanations, and guidance on best practices.",
+},
+"CODE_REVIEW_ASSISTANT": {
+"description": "Expert in code review and quality assurance.",
+"skills": ["Code Style", "Best Practices", "Security", "Performance", "Maintainability"],
+"system_prompt": "You are a code review assistant. Your goal is to assist the user in reviewing code for quality and efficiency. Provide feedback on code style, best practices, security, performance, and maintainability.",
+},
+"CONTENT_WRITER_EDITOR": {
+"description": "Expert in content writing and editing.",
+"skills": ["Grammar", "Style", "Clarity", "Conciseness", "SEO"],
+"system_prompt": "You are a content writer and editor. Your goal is to assist the user in creating high-quality content. Provide suggestions on grammar, style, clarity, conciseness, and SEO.",
+},
+"QUESTION_GENERATOR": {
+"description": "Expert in generating questions for learning and assessment.",
+"skills": ["Question Types", "Cognitive Levels", "Assessment Design"],
+"system_prompt": "You are a question generator. Your goal is to assist the user in generating questions for learning and assessment. Provide questions that are relevant to the topic and aligned with the cognitive levels.",
+},
+"HUGGINGFACE_FILE_DEV": {
+"description": "Expert in developing Hugging Face files for machine learning models.",
+"skills": ["Transformers", "Datasets", "Model Training", "Model Deployment"],
+"system_prompt": "You are a Hugging Face file development expert. Your goal is to assist the user in creating and deploying Hugging Face files for machine learning models. Provide code snippets, explanations, and guidance on best practices.",
+},
 }
 
 # --- Session State ---
@@ -86,56 +88,30 @@ if "repo_name" not in st.session_state:
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
 
-def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
+def add_code_to_workspace(project_name: str, code: str, file_name: str):
     if project_name in st.session_state.workspace_projects:
-        project = st.session_state.workspace_projects[project_name]
-        project['files'].append({'file_name': file_name, 'code': code})
-        return f"Code added to project {project_name}"
+        st.session_state.workspace_projects[project_name]['files'].append({'file_name': file_name, 'code': code})
+        return f"Added code to {file_name} in project {project_name}"
     else:
-        return f"Project {project_name} does not exist."
+        return f"Project {project_name} does not exist"
 
-def terminal_interface(command: str, project_name: str) -> str:
-    try:
-        project = st.session_state.workspace_projects.get(project_name, {})
-        workspace_dir = os.path.join("workspace", project_name)
-        os.makedirs(workspace_dir, exist_ok=True)
-        result = subprocess.run(command, shell=True, cwd=workspace_dir, capture_output=True, text=True)
+def terminal_interface(command: str, project_name: str):
+    if project_name in st.session_state.workspace_projects:
+        result = subprocess.run(command, cwd=project_name, shell=True, capture_output=True, text=True)
         return result.stdout + result.stderr
-    except Exception as e:
-        return str(e)
+    else:
+        return f"Project {project_name} does not exist"
 
-def chat_interface(message: str, selected_agents: List[str]) -> str:
+def chat_interface(message: str, selected_agents: List[str]):
     responses = {}
-    for agent_name in selected_agents:
-        agent = agents[agent_name]
-        responses[agent_name] = agent['system_prompt'] + " " + message
-    return json.dumps(responses, indent=2)
+    for agent in selected_agents:
+        # Assuming a function `get_agent_response` that fetches the response from the agent
+        responses[agent] = get_agent_response(message, agents[agent]['system_prompt'])
+    return responses
 
-def run_autonomous_build(selected_agents: List[str], project_name: str):
-    for agent_name in selected_agents:
-        agent = agents[agent_name]
-        chat_history = st.session_state.chat_history
-        workspace_projects = st.session_state.workspace_projects
-        summary, next_step = agent.autonomous_build(chat_history, workspace_projects)
-        rprint(Panel(summary, title="[bold blue]Current State[/bold blue]"))
-        rprint(Panel(next_step, title="[bold blue]Next Step[/bold blue]"))
-        # Implement logic for autonomous build based on the current state
-
-def display_agent_info(agent_name: str):
-    agent = agents[agent_name]
-    st.sidebar.subheader(f"Agent: {agent_name}")
-    st.sidebar.write(agent['description'])
-    st.sidebar.write("Skills: " + ", ".join(agent['skills']))
-    st.sidebar.write("System Prompt: " + agent['system_prompt'])
-
-def display_workspace_projects():
-    st.sidebar.subheader("Workspace Projects")
-    for project_name, details in st.session_state.workspace_projects.items():
-        st.sidebar.write(f"{project_name}: {details}")
-
-def display_chat_history():
-    st.sidebar.subheader("Chat History")
-    st.sidebar.json(st.session_state.chat_history)
+def get_agent_response(message: str, system_prompt: str):
+    # This function should implement how to get the response from the agent
+    pass
 
 # --- Streamlit UI ---
 st.title("DevToolKit: AI-Powered Development Environment")
