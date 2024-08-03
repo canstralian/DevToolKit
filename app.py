@@ -5,23 +5,14 @@ from typing import Dict, List, Tuple
 
 import gradio as gr
 import streamlit as st
+import streamlit_chat
 from huggingface_hub import InferenceClient, hf_hub_url, cached_download
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from rich import print as rprint
-from rich.panel import Panel
-from rich.progress import track
-from rich.table import Table
-import subprocess
-import threading
 import git
-from langchain.llms import HuggingFaceHub
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.chains.question_answering import load_qa_chain
-from langchain.text_splitter import CharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
-from streamlit_ace import st_ace
-from streamlit_chat import st_chat
+from langchain_community.llms import HuggingFaceHub
+from langchain_community.chains import ConversationChain
+from langchain_community.memory import ConversationBufferMemory
+from langchain_community.chains.question_answering import load_qa_chain
+from langchain_community.utils import CharacterTextSplitter
 
 # --- Constants ---
 MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
