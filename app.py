@@ -85,100 +85,34 @@ if "repo_name" not in st.session_state:
     st.session_state.repo_name = None
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
-if "selected_code_model" not in st.session_state:
-    st.session_state.selected_code_model = None
-if "selected_chat_model" not in st.session_state:
-    st.session_state.selected_chat_model = None
 
-# --- Functions ---
-def format_prompt(message: str, history: List[Tuple[str, str]], agent_prompt: str) -> str:
-    """Formats the prompt for the language model."""
-    prompt = "<s>"
-    for user_prompt, bot_response in history:
-        prompt += f"[INST] {user_prompt} [/INST]"
-        prompt += f" {bot_response}</s> "
-    prompt += f"[INST] {agent_prompt}, {message} [/INST]"
-    return prompt
-
-def generate_response(prompt: str, agent_name: str) -> str:
-    """Generates a response from the language model."""
-    agent = agents[agent_name]
-    system_prompt = agent["system_prompt"]
-    generate_kwargs = dict(
-        temperature=TEMPERATURE,
-        max_new_tokens=MAX_NEW_TOKENS,
-        top_p=TOP_P,
-        repetition_penalty=REPETITION_PENALTY,
-        do_sample=True,
-    )
-    input_ids = tokenizer.encode(prompt, return_tensors="pt")
-    output = model.generate(input_ids, **generate_kwargs)
-    response = tokenizer.decode(output[0], skip_special_tokens=True)
-    return response
-
-def chat_interface(chat_input: str, agent_names: List[str]) -> str:
-    """Handles chat interactions with the selected agents."""
-    if agent_names:
-        responses = []
-        for agent_name in agent_names:
-            prompt = format_prompt(chat_input, st.session_state.chat_history, agents[agent_name]["system_prompt"])
-            response = generate_response(prompt, agent_name)
-            responses.append(f"{agent_name}: {response}")
-        return "\n".join(responses)
+def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
+    if project_name in st.session_state.workspace_projects:
+        project = st.session_state.workspace_projects[project_name]
+        project['files'].append({'file_name': file_name, 'code': code})
+        return f"Code added to project {project_name}"
     else:
-        return "Please select at least one agent."
+        return f"Project {project_name} does not exist."
 
 def terminal_interface(command: str, project_name: str) -> str:
-    """Executes a command within the specified project directory."""
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=project_name)
-        return result.stdout if result.returncode == 0 else result.stderr
+        project = st.session_state.workspace_projects.get(project_name, {})
+        workspace_dir = os.path.join("workspace", project_name)
+        os.makedirs(workspace_dir, exist_ok=True)
+        result = subprocess.run(command, shell=True, cwd=workspace_dir, capture_output=True, text=True)
+        return result.stdout + result.stderr
     except Exception as e:
         return str(e)
 
-def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
-    """Adds code to a workspace project."""
-    project_path = os.path.join(os.getcwd(), project_name)
-    if not os.path.exists(project_path):
-        os.makedirs(project_path)
-    file_path = os.path.join(project_path, file_name)
-    with open(file_path, 'w') as file:
-        file.write(code)
-    if project_name not in st.session_state.workspace_projects:
-        st.session_state.workspace_projects[project_name] = {'files': []}
-    st.session_state.workspace_projects[project_name]['files'].append(file_name)
-    return f"Added {file_name} to {project_name}"
+def chat_interface(message: str, selected_agents: List[str]) -> str:
+    responses = {}
+    for agent_name in selected_agents:
+        agent = agents[agent_name]
+        responses[agent_name] = agent['system_prompt'] + " " + message
+    return json.dumps(responses, indent=2)
 
-def display_workspace_projects():
-    """Displays a table of workspace projects."""
-    table = Table(title="Workspace Projects")
-    table.add_column("Project Name", style="cyan", no_wrap=True)
-    table.add_column("Files", style="magenta")
-    for project_name, details in st.session_state.workspace_projects.items():
-        table.add_row(project_name, ", ".join(details['files']))
-    rprint(Panel(table, title="[bold blue]Workspace Projects[/bold blue]"))
-
-def display_chat_history():
-    """Displays the chat history in a formatted way."""
-    table = Table(title="Chat History")
-    table.add_column("User", style="cyan", no_wrap=True)
-    table.add_column("Agent", style="magenta")
-    for user_prompt, bot_response in st.session_state.chat_history:
-        table.add_row(user_prompt, bot_response)
-    rprint(Panel(table, title="[bold blue]Chat History[/bold blue]"))
-
-def display_agent_info(agent_name: str):
-    """Displays information about the selected agent."""
-    agent = agents[agent_name]
-    table = Table(title=f"{agent_name} - Agent Information")
-    table.add_column("Description", style="cyan", no_wrap=True)
-    table.add_column("Skills", style="magenta")
-    table.add_row(agent["description"], ", ".join(agent["skills"]))
-    rprint(Panel(table, title=f"[bold blue]{agent_name} - Agent Information[/bold blue]"))
-
-def run_autonomous_build(agent_names: List[str], project_name: str):
-    """Runs the autonomous build process."""
-    for agent_name in agent_names:
+def run_autonomous_build(selected_agents: List[str], project_name: str):
+    for agent_name in selected_agents:
         agent = agents[agent_name]
         chat_history = st.session_state.chat_history
         workspace_projects = st.session_state.workspace_projects
@@ -186,7 +120,22 @@ def run_autonomous_build(agent_names: List[str], project_name: str):
         rprint(Panel(summary, title="[bold blue]Current State[/bold blue]"))
         rprint(Panel(next_step, title="[bold blue]Next Step[/bold blue]"))
         # Implement logic for autonomous build based on the current state
-        # ...
+
+def display_agent_info(agent_name: str):
+    agent = agents[agent_name]
+    st.sidebar.subheader(f"Agent: {agent_name}")
+    st.sidebar.write(agent['description'])
+    st.sidebar.write("Skills: " + ", ".join(agent['skills']))
+    st.sidebar.write("System Prompt: " + agent['system_prompt'])
+
+def display_workspace_projects():
+    st.sidebar.subheader("Workspace Projects")
+    for project_name, details in st.session_state.workspace_projects.items():
+        st.sidebar.write(f"{project_name}: {details}")
+
+def display_chat_history():
+    st.sidebar.subheader("Chat History")
+    st.sidebar.json(st.session_state.chat_history)
 
 # --- Streamlit UI ---
 st.title("DevToolKit: AI-Powered Development Environment")
@@ -247,7 +196,7 @@ if st.button("Automate"):
 
 # --- Display Information ---
 st.sidebar.subheader("Current State")
-st.sidebar.json(st.session_state.current_state)
+st.sidebar.json(st.session_state, indent=2)
 if st.session_state.active_agent:
     display_agent_info(st.session_state.active_agent)
 display_workspace_projects()
@@ -258,7 +207,7 @@ additional_inputs = [
     gr.Dropdown(label="Agents", choices=[s for s in agents.keys()], value=list(agents.keys())[0], interactive=True),
     gr.Textbox(label="System Prompt", max_lines=1, interactive=True),
     gr.Slider(label="Temperature", value=TEMPERATURE, minimum=0.0, maximum=1.0, step=0.05, interactive=True, info="Higher values produce more diverse outputs"),
-    gr.Slider(label="Max new tokens", value=MAX_NEW_TOKENS, minimum=0, maximum=1000*10, step=64, interactive=True, info="The maximum numbers of new tokens"),
+    gr.Slider(label="Max new tokens", value=MAX_NEW_TOKENS, minimum=0, maximum=10240, step=64, interactive=True, info="The maximum numbers of new tokens"),
     gr.Slider(label="Top-p (nucleus sampling)", value=TOP_P, minimum=0.0, maximum=1, step=0.05, interactive=True, info="Higher values sample more low-probability tokens"),
     gr.Slider(label="Repetition penalty", value=REPETITION_PENALTY, minimum=1.0, maximum=2.0, step=0.05, interactive=True, info="Penalize repeated tokens"),
 ]
