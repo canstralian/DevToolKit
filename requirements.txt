@@ -1,6 +1,7 @@
 transformers
 transformers[torch]
 streamlit
+streamlit-chat
 torch
 black
 pylint
