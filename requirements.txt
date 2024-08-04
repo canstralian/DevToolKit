@@ -15,6 +15,7 @@ gradio
 cookiecutter
 bs4
 GitPython
+pyaml
 pytest
 faiss-cpu
 huggingface_hub
