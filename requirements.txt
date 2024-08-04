@@ -2,7 +2,7 @@ transformers
 transformers[torch]
 streamlit
 streamlit-chat
-rasa
+rasa==3.6.20
 torch
 black
 pylint
