@@ -6,6 +6,7 @@ rasa==3.6.20
 torch
 black
 pylint
+sentencepiece==0.1.96
 langchain==0.2.12
 langchain-community
 langchain-core
