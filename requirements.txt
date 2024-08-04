@@ -6,7 +6,7 @@ rasa==3.6.20
 torch
 black
 pylint
-langchain
+langchain==0.2.12
 langchain-community
 langchain-core
 opencv-python
