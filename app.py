@@ -1,4 +1,3 @@
-import os
 import json
 import time
 from typing import Dict, List, Tuple
@@ -15,9 +14,6 @@ from langchain_community.chains.question_answering import load_qa_chain
 from langchain_community.utils import CharacterTextSplitter
 from transformers import BertTokenizerFast
 
-# Download the DistilBERT tokenizer (~3 MB)
-DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased').save_pretrained('./cache/distilbert-base-uncased-local')
-
 # --- Constants ---
 MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
 MAX_NEW_TOKENS = 2048  # Increased for better code generation
@@ -33,6 +29,16 @@ def load_model_and_tokenizer():
     return model, tokenizer
 
 model, tokenizer = load_model_and_tokenizer()
+
+PRETRAINED_MODEL_NAME = "distilbert-base-uncased"
+model_path = os.path.join(os.getcwd(), PRETRAINED_MODEL_NAME)
+if not os.path.exists(model_path):
+    raise FileNotFoundError("Pre-trained model weight directory {} doesn't exist".format(model_path))
+else:
+    print("Found Pre-trained Model at:", model_path)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+# Download the DistilBERT tokenizer (~3 MB)
+DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased').save_pretrained('./cache/distilbert-base-uncased-local')
 
 # --- Agents ---
 agents = {
