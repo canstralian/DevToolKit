@@ -1,18 +1,27 @@
+import os
 import json
 import time
 from typing import Dict, List, Tuple
 
 import gradio as gr
 import streamlit as st
-import streamlit_chat
 from huggingface_hub import InferenceClient, hf_hub_url, cached_download
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from rich import print as rprint
+from rich.panel import Panel
+from rich.progress import track
+from rich.table import Table
+import subprocess
+import threading
 import git
-from langchain_community.llms import HuggingFaceHub
-from langchain_community.chains import ConversationChain
-from langchain_community.memory import ConversationBufferMemory
-from langchain_community.chains.question_answering import load_qa_chain
-from langchain_community.utils import CharacterTextSplitter
-from transformers import BertTokenizerFast
+from langchain.llms import HuggingFaceHub
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.chains.question_answering import load_qa_chain
+from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.document_loaders import TextLoader
+from streamlit_ace import st_ace
+from streamlit_chat import st_chat
 
 # --- Constants ---
 MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
@@ -29,16 +38,6 @@ def load_model_and_tokenizer():
     return model, tokenizer
 
 model, tokenizer = load_model_and_tokenizer()
-
-PRETRAINED_MODEL_NAME = "distilbert-base-uncased"
-model_path = os.path.join(os.getcwd(), PRETRAINED_MODEL_NAME)
-if not os.path.exists(model_path):
-    raise FileNotFoundError("Pre-trained model weight directory {} doesn't exist".format(model_path))
-else:
-    print("Found Pre-trained Model at:", model_path)
-    tokenizer = GPT2Tokenizer.from_pretrained(model_path)
-# Download the DistilBERT tokenizer (~3 MB)
-DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased').save_pretrained('./cache/distilbert-base-uncased-local')
 
 # --- Agents ---
 agents = {
@@ -114,15 +113,8 @@ def display_workspace_projects():
 
 def display_chat_history():
     st.subheader("Chat History")
-    html_string = ""
-    for idx, message in enumerate(st.session_state.chat_history):
-        if idx % 2 == 0:
-           role = "User:"
-        else:
-           role = "Assistant:"
-        html_string += f"<p>{role}</p>"
-        html_string += f"<p>{message}</p>"
-    st.markdown(html_string, unsafe_allow_html=True)
+    for message in st.session_state.chat_history:
+        st.text(message)
 
 def run_autonomous_build(selected_agents: List[str], project_name: str):
     st.info("Starting autonomous build process...")
