@@ -245,7 +245,8 @@ if st.button("Clone Repository"):
 st.subheader("Collaborative Agent Example")
 collab_agents = st.multiselect("Select AI agents for collaboration", list(agents.keys()), key="collab_agent_select")
 collab_project = st.text_input("Enter project name for collaboration:")
-collab_task = st.text_input("Enter collaborative task:")if st.button("Run Collaborative Task"):
+collab_task = st.text_input("Enter collaborative task:")
+if st.button("Run Collaborative Task"):
     if st.button("Start Collaborative Task"):
     if collab_agents and collab_project and collab_task:
         collaborative_agent_example(collab_agents, collab_project, collab_task)
