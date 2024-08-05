@@ -24,7 +24,7 @@ from streamlit_ace import st_ace
 from streamlit_chat import st_chat
 
 # --- Constants ---
-MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model like 'google/flan-t5-xl'
+MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model
 MAX_NEW_TOKENS = 2048  # Increased for better code generation
 TEMPERATURE = 0.7
 TOP_P = 0.95
