@@ -1,6 +1,8 @@
 import os
 import subprocess
-from typing import List, Dict, Tuple
+import time
+from typing import List, Dict
+
 from huggingface_hub import InferenceClient
 import streamlit as st
 
@@ -15,11 +17,18 @@ from app.prompts import (
     READ_PROMPT,
     TASK_PROMPT,
     UNDERSTAND_TEST_RESULTS_PROMPT,
+    WEB_DEV_SYSTEM_PROMPT,
+    AI_SYSTEM_PROMPT,
+    WEB_DEV,
+    PYTHON_CODE_DEV,
+    HUGGINGFACE_FILE_DEV,
 )
 from app.utils import (
     parse_action,
     parse_file_content,
     read_python_module_structure,
+    extract_imports,  # Unused import, consider removing or using
+    get_file,  # Unused import, consider removing or using
 )
 
 # --- Constants ---
@@ -43,15 +52,16 @@ MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"  # Consider using a smaller model
 # --- Initialize Hugging Face client ---
 client = InferenceClient(MODEL)
 
+
 # --- Classes ---
 class Agent:
     def __init__(self, name: str, agent_type: str, complexity: int):
         self.name = name
         self.type = agent_type
         self.complexity = complexity
-        self.tools = []
+        self.tools: List[Tool] = []
 
-    def add_tool(self, tool):
+    def add_tool(self, tool: "Tool"):
         self.tools.append(tool)
 
     def __str__(self):
@@ -71,10 +81,10 @@ class Pypelyne:
     def __init__(self):
         self.agents: List[Agent] = []
         self.tools: List[Tool] = []
-        self.history = ""
-        self.task = None
-        self.purpose = None
-        self.directory = None
+        self.history: str = ""
+        self.task: str = ""
+        self.purpose: str = ""
+        self.directory: str = ""
 
     def add_agent(self, agent: Agent):
         self.agents.append(agent)
@@ -82,7 +92,7 @@ class Pypelyne:
     def add_tool(self, tool: Tool):
         self.tools.append(tool)
 
-    def generate_chat_app(self):
+    def generate_chat_app(self) -> str:
         time.sleep(2)  # Simulate processing time
         return f"Chat app generated with {len(self.agents)} agents and {len(self.tools)} tools."
 
@@ -334,16 +344,27 @@ def main():
 
     # --- Sidebar ---
     st.sidebar.title("⚙️ Settings")
+    if "directory" not in st.session_state:
+        st.session_state.directory = "."
     pypelyne.directory = st.sidebar.text_input(
-        "Project Directory:", value=".", help="Path to your coding project"
+        "Project Directory:",
+        value=st.session_state.directory,
+        help="Path to your coding project",
     )
+    st.session_state.directory = pypelyne.directory  # Update session state
+    if "purpose" not in st.session_state:
+        st.session_state.purpose = ""
     pypelyne.purpose = st.sidebar.text_area(
         "Project Purpose:",
+        value=st.session_state.purpose,
         help="Describe the purpose of your coding project.",
     )
+    st.session_state.purpose = pypelyne.purpose  # Update session state
 
     # --- Agent and Tool Management ---
     st.sidebar.header("🤖 Agents")
+    if "agents" not in st.session_state:
+        st.session_state.agents = []
     show_agent_creation = st.sidebar.expander(
         "Create New Agent", expanded=False
     )
@@ -353,34 +374,41 @@ def main():
         agent_complexity = st.slider("Complexity (1-5):", 1, 5, 3)
         if st.button("Add Agent"):
             create_agent(agent_name, agent_type, agent_complexity)
+            st.session_state.agents = pypelyne.agents  # Update session state
 
     st.sidebar.header("🛠️ Tools")
+    if "tools" not in st.session_state:
+        st.session_state.tools = []
     show_tool_creation = st.sidebar.expander("Create New Tool", expanded=False)
     with show_tool_creation:
         tool_name = st.text_input("Tool Name:")
         tool_type = st.selectbox("Tool Type:", TOOL_TYPES)
         if st.button("Add Tool"):
             create_tool(tool_name, tool_type)
+            st.session_state.tools = pypelyne.tools  # Update session state
 
     # --- Display Agents and Tools ---
     st.sidebar.subheader("Active Agents:")
-    for agent in pypelyne.agents:
+    for agent in st.session_state.agents:
         st.sidebar.write(f"- {agent}")
 
     st.sidebar.subheader("Available Tools:")
-    for tool in pypelyne.tools:
+    for tool in st.session_state.tools:
         st.sidebar.write(f"- {tool}")
 
     # --- Main Content Area ---
     st.header("💻 Code Interaction")
 
+    if "task" not in st.session_state:
+        st.session_state.task = ""
     task_input = st.text_area(
         "🎯 Task:",
-        value=pypelyne.task if pypelyne.task else "",
+        value=st.session_state.task,
         help="Describe the coding task you want to perform.",
     )
     if task_input:
         pypelyne.task = task_input
+        st.session_state.task = pypelyne.task  # Update session state
 
     user_input = st.text_input(
         "💬 Your Input:", help="Provide instructions or ask questions."
