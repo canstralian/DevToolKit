@@ -6,7 +6,7 @@ from typing import List, Dict
 from huggingface_hub import InferenceClient
 import streamlit as st
 
-from app.prompts import (
+from .prompts import * (
     ACTION_PROMPT,
     ADD_PROMPT,
     COMPRESS_HISTORY_PROMPT,
