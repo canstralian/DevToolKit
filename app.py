@@ -6,7 +6,7 @@ from typing import List, Dict
 from huggingface_hub import InferenceClient
 import streamlit as st
 
-from .prompts import * (
+from .prompts import [
     ACTION_PROMPT,
     ADD_PROMPT,
     COMPRESS_HISTORY_PROMPT,
@@ -21,15 +21,15 @@ from .prompts import * (
     AI_SYSTEM_PROMPT,
     WEB_DEV,
     PYTHON_CODE_DEV,
-    HUGGINGFACE_FILE_DEV,
-)
-from app.utils import (
+    HUGGINGFACE_FILE_DEV
+]
+from app.utils import [
     parse_action,
     parse_file_content,
     read_python_module_structure,
     extract_imports,  # Unused import, consider removing or using
     get_file,  # Unused import, consider removing or using
-)
+]
 
 # --- Constants ---
 AGENT_TYPES = [
