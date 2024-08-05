@@ -1,303 +1,422 @@
+
+
 import os
-import json
-import time
-from typing import Dict, List, Tuple
-
-import gradio as gr
-import streamlit as st
-from huggingface_hub import InferenceClient, hf_hub_url, cached_download
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from rich import print as rprint
-from rich.panel import Panel
-from rich.progress import track
-from rich.table import Table
 import subprocess
-import threading
-import git
-from langchain.llms import HuggingFaceHub
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.chains.question_answering import load_qa_chain
-from langchain.text_splitter import CharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
-from streamlit_ace import st_ace
-from streamlit_chat import message
+from huggingface_hub import InferenceClient
+import gradio as gr
+import random
+import time
+from typing import List, Dict
+from flask import Flask, request, jsonify
 
-# --- Constants ---
-MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model
-MAX_NEW_TOKENS = 2048  # Increased for better code generation
-TEMPERATURE = 0.7
-TOP_P = 0.95
-REPETITION_PENALTY = 1.2
+# Constants
+AGENT_TYPES = [
+    "Task Executor",
+    "Information Retriever",
+    "Decision Maker",
+    "Data Analyzer",
+]
+TOOL_TYPES = [
+    "Web Scraper",
+    "Database Connector",
+    "API Caller",
+    "File Handler",
+    "Text Processor",
+]
+VERBOSE = False
+MAX_HISTORY = 100
+MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-# --- Model & Tokenizer ---
-@st.cache_resource
-def load_model_and_tokenizer():
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map="auto")  # Use 'auto' for optimal device selection
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    return model, tokenizer
+# Initialize Hugging Face client
+client = InferenceClient(MODEL)
 
-model, tokenizer = load_model_and_tokenizer()
+# Import necessary prompts and functions from the existing code
+from .prompts import (
+    ACTION_PROMPT,
+    ADD_PROMPT,
+    COMPRESS_HISTORY_PROMPT,
+    LOG_PROMPT,
+    LOG_RESPONSE,
+    MODIFY_PROMPT,
+    PREFIX,
+    READ_PROMPT,
+    TASK_PROMPT,
+    UNDERSTAND_TEST_RESULTS_PROMPT,
+)
+from .utils import parse_action, parse_file_content, read_python_module_structure
 
-# --- Agents ---
-agents = {
-    "WEB_DEV": {
-        "description": "Expert in web development technologies and frameworks.",
-        "skills": ["HTML", "CSS", "JavaScript", "React", "Vue.js", "Flask", "Django", "Node.js", "Express.js"],
-        "system_prompt": "You are a web development expert. Your goal is to assist the user in building and deploying web applications. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "AI_SYSTEM_PROMPT": {
-        "description": "Expert in designing and implementing AI systems.",
-        "skills": ["Machine Learning", "Deep Learning", "Natural Language Processing", "Computer Vision", "Reinforcement Learning"],
-        "system_prompt": "You are an AI system expert. Your goal is to assist the user in designing and implementing AI systems. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "PYTHON_CODE_DEV": {
-        "description": "Expert in Python programming and development.",
-        "skills": ["Python", "Data Structures", "Algorithms", "Object-Oriented Programming", "Functional Programming"],
-        "system_prompt": "You are a Python code development expert. Your goal is to assist the user in writing and debugging Python code. Provide code snippets, explanations, and guidance on best practices.",
-    },
-    "CODE_REVIEW_ASSISTANT": {
-        "description": "Expert in code review and quality assurance.",
-        "skills": ["Code Style", "Best Practices", "Security", "Performance", "Maintainability"],
-        "system_prompt": "You are a code review expert. Your goal is to assist the user in reviewing and improving their code. Provide feedback on code quality, style, and best practices.",
-    },
-}
+class Agent:
+    def __init__(self, name: str, agent_type: str, complexity: int):
+        self.name = name
+        self.type = agent_type
+        self.complexity = complexity
+        self.tools = []
 
-# --- Session State ---
-if "workspace_projects" not in st.session_state:
-    st.session_state.workspace_projects = {}
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "active_agent" not in st.session_state:
-    st.session_state.active_agent = None
-if "selected_agents" not in st.session_state:
-    st.session_state.selected_agents = []
-if "current_project" not in st.session_state:
-    st.session_state.current_project = None
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    def add_tool(self, tool):
+        self.tools.append(tool)
 
-# --- Helper Functions ---
-def add_code_to_workspace(project_name: str, code: str, file_name: str):
-    if project_name in st.session_state.workspace_projects:
-        st.session_state.workspace_projects[project_name]['files'].append({'file_name': file_name, 'code': code})
-        return f"Added code to {file_name} in project {project_name}"
-    else:
-        return f"Project {project_name} does not exist"
+    def __str__(self):
+        return f"{self.name} ({self.type}) - Complexity: {self.complexity}"
 
-def terminal_interface(command: str, project_name: str):
-    if project_name in st.session_state.workspace_projects:
-        result = subprocess.run(command, cwd=project_name, shell=True, capture_output=True, text=True)
-        return result.stdout + result.stderr
-    else:
-        return f"Project {project_name} does not exist"
+class Tool:
+    def __init__(self, name: str, tool_type: str):
+        self.name = name
+        self.type = tool_type
 
-def get_agent_response(message: str, system_prompt: str):
-    llm = HuggingFaceHub(repo_id=MODEL_NAME, model_kwargs={"temperature": TEMPERATURE, "top_p": TOP_P, "repetition_penalty": REPETITION_PENALTY, "max_length": MAX_NEW_TOKENS})
-    memory = ConversationBufferMemory()
-    conversation = ConversationChain(llm=llm, memory=memory)
-    response = conversation.run(system_prompt + "\n" + message)
-    return response
+    def __str__(self):
+        return f"{self.name} ({self.type})"
 
-def display_agent_info(agent_name: str):
-    agent = agents[agent_name]
-    st.sidebar.subheader(f"Active Agent: {agent_name}")
-    st.sidebar.write(f"Description: {agent['description']}")
-    st.sidebar.write(f"Skills: {', '.join(agent['skills'])}")
+class Pypelyne:
+    def __init__(self):
+        self.agents: List[Agent] = []
+        self.tools: List[Tool] = []
+        self.history = ""
+        self.task = None
+        self.purpose = None
+        self.directory = None
 
-def display_workspace_projects():
-    st.subheader("Workspace Projects")
-    for project_name, project_data in st.session_state.workspace_projects.items():
-        with st.expander(project_name):
-            for file in project_data['files']:
-                st.text(file['file_name'])
-                st.code(file['code'], language="python")
+    def add_agent(self, agent: Agent):
+        self.agents.append(agent)
 
-def display_chat_history():
-    st.subheader("Chat History")
-    for message in st.session_state.chat_history:
-        st.text(message)
+    def add_tool(self, tool: Tool):
+        self.tools.append(tool)
 
-def run_autonomous_build(selected_agents: List[str], project_name: str):
-    st.info("Starting autonomous build process...")
-    for agent in selected_agents:
-        st.write(f"Agent {agent} is working on the project...")
-        code = get_agent_response(f"Generate code for a simple web application in project {project_name}", agents[agent]['system_prompt'])
-        add_code_to_workspace(project_name, code, f"{agent.lower()}_app.py")
-        st.write(f"Agent {agent} has completed its task.")
-    st.success("Autonomous build process completed!")
+    def generate_chat_app(self):
+        time.sleep(2)  # Simulate processing time
+        return f"Chat app generated with {len(self.agents)} agents and {len(self.tools)} tools."
 
-def collaborative_agent_example(selected_agents: List[str], project_name: str, task: str):
-    st.info(f"Starting collaborative task: {task}")
-    responses = {}
-    for agent in selected_agents:
-        st.write(f"Agent {agent} is working on the task...")
-        response = get_agent_response(task, agents[agent]['system_prompt'])
-        responses[agent] = response
-    
-    combined_response = combine_and_process_responses(responses, task)
-    st.success("Collaborative task completed!")
-    st.write(combined_response)
+    def run_gpt(self, prompt_template, stop_tokens, max_tokens, **prompt_kwargs):
+        content = PREFIX.format(
+            module_summary=read_python_module_structure(self.directory)[0],
+            purpose=self.purpose,
+        ) + prompt_template.format(**prompt_kwargs)
 
-def combine_and_process_responses(responses: Dict[str, str], task: str) -> str:
-    # This is a placeholder function. In a real-world scenario, you would implement
-    # more sophisticated logic to combine and process the responses.
-    combined = "\n\n".join([f"{agent}: {response}" for agent, response in responses.items()])
-    return f"Combined response for task '{task}':\n\n{combined}"
+        if VERBOSE:
+            print(LOG_PROMPT.format(content))
 
-# --- Chat Interface ---
-st.subheader("Chat with AI Agents")
+        stream = client.text_generation(
+            prompt=content,
+            max_new_tokens=max_tokens,
+            stop_sequences=stop_tokens if stop_tokens else None,
+            do_sample=True,
+            temperature=0.7,
+        )
 
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        resp = "".join(token for token in stream)
 
-# React to user input
-if prompt := st.chat_input("What is up?"):
-    # Display user message in chat message container
-    st.chat_message("user").markdown(prompt)
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+        if VERBOSE:
+            print(LOG_RESPONSE.format(resp))
+        return resp
 
-    # Process the message with selected agents
-    if st.session_state.selected_agents:
-        responses = {}
-        for agent in st.session_state.selected_agents:
-            response = get_agent_response(prompt, agents[agent]['system_prompt'])
-            responses[agent] = response
+    def compress_history(self):
+        resp = self.run_gpt(
+            COMPRESS_HISTORY_PROMPT,
+            stop_tokens=["observation:", "task:", "action:", "thought:"],
+            max_tokens=512,
+            task=self.task,
+            history=self.history,
+        )
+        self.history = f"observation: {resp}\n"
 
-        # Combine responses (you may want to implement a more sophisticated combination method)
-        combined_response = "\n".join([f"{agent}: {resp}" for agent, resp in responses.items()])
+    def run_action(self, action_name, action_input):
+        if action_name == "COMPLETE":
+            return "Task completed."
 
-        # Display assistant response in chat message container
-        with st.chat_message("assistant"):
-            st.markdown(combined_response)
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": combined_response})
-    else:
-        st.warning("Please select at least one agent to chat with.")
+        if len(self.history.split("\n")) > MAX_HISTORY:
+            if VERBOSE:
+                print("COMPRESSING HISTORY")
+            self.compress_history()
 
-# Agent selection
-st.sidebar.subheader("Select AI Agents")
-st.session_state.selected_agents = st.sidebar.multiselect("Select AI agents", list(agents.keys()), key="agent_select")
+        action_funcs = {
+            "MAIN": self.call_main,
+            "UPDATE-TASK": self.call_set_task,
+            "MODIFY-FILE": self.call_modify,
+            "READ-FILE": self.call_read,
+            "ADD-FILE": self.call_add,
+            "TEST": self.call_test,
+        }
 
+        if action_name not in action_funcs:
+            return f"Unknown action: {action_name}"
 
-# --- Project Management ---
-st.header("Project Management")
-project_name = st.text_input("Enter project name:")
-if st.button("Create Project"):
-    if project_name and project_name not in st.session_state.workspace_projects:
-        st.session_state.workspace_projects[project_name] = {'files': []}
-        st.success(f"Created project: {project_name}")
-    elif project_name in st.session_state.workspace_projects:
-        st.warning(f"Project {project_name} already exists")
-    else:
-        st.warning("Please enter a project name")
+        print(f"RUN: {action_name} {action_input}")
+        return action_funcs[action_name](action_input)
 
-# --- Code Editor ---
-st.subheader("Code Editor")
-if st.session_state.workspace_projects:
-    selected_project = st.selectbox("Select project", list(st.session_state.workspace_projects.keys()))
-    if selected_project:
-        files = [file['file_name'] for file in st.session_state.workspace_projects[selected_project]['files']]
-        selected_file = st.selectbox("Select file to edit", files) if files else None
-        if selected_file:
-            file_content = next((file['code'] for file in st.session_state.workspace_projects[selected_project]['files'] if file['file_name'] == selected_file), "")
-            edited_code = st_ace(value=file_content, language="python", theme="monokai", key="code_editor")
-            if st.button("Save Changes"):
-                for file in st.session_state.workspace_projects[selected_project]['files']:
-                    if file['file_name'] == selected_file:
-                        file['code'] = edited_code
-                        st.success("Changes saved successfully!")
-                        break
+    def call_main(self, action_input):
+        resp = self.run_gpt(
+            ACTION_PROMPT,
+            stop_tokens=["observation:", "task:"],
+            max_tokens=256,
+            task=self.task,
+            history=self.history,
+        )
+        lines = resp.strip().strip("\n").split("\n")
+        for line in lines:
+            if line == "":
+                continue
+            if line.startswith("thought: "):
+                self.history += f"{line}\n"
+            elif line.startswith("action: "):
+                action_name, action_input = parse_action(line)
+                self.history += f"{line}\n"
+                return self.run_action(action_name, action_input)
+        return "No valid action found."
+
+    def call_set_task(self, action_input):
+        self.task = self.run_gpt(
+            TASK_PROMPT,
+            stop_tokens=[],
+            max_tokens=64,
+            task=self.task,
+            history=self.history,
+        ).strip("\n")
+        self.history += f"observation: task has been updated to: {self.task}\n"
+        return f"Task updated: {self.task}"
+
+    def call_modify(self, action_input):
+        if not os.path.exists(action_input):
+            self.history += "observation: file does not exist\n"
+            return "File does not exist."
+
+        content = read_python_module_structure(self.directory)[1]
+        f_content = (
+            content[action_input] if content[action_input] else "< document is empty >"
+        )
+
+        resp = self.run_gpt(
+            MODIFY_PROMPT,
+            stop_tokens=["action:", "thought:", "observation:"],
+            max_tokens=2048,
+            task=self.task,
+            history=self.history,
+            file_path=action_input,
+            file_contents=f_content,
+        )
+        new_contents, description = parse_file_content(resp)
+        if new_contents is None:
+            self.history += "observation: failed to modify file\n"
+            return "Failed to modify file."
+
+        with open(action_input, "w") as f:
+            f.write(new_contents)
+
+        self.history += f"observation: file successfully modified\n"
+        self.history += f"observation: {description}\n"
+        return f"File modified: {action_input}"
+
+    def call_read(self, action_input):
+        if not os.path.exists(action_input):
+            self.history += "observation: file does not exist\n"
+            return "File does not exist."
+
+        content = read_python_module_structure(self.directory)[1]
+        f_content = (
+            content[action_input] if content[action_input] else "< document is empty >"
+        )
+
+        resp = self.run_gpt(
+            READ_PROMPT,
+            stop_tokens=[],
+            max_tokens=256,
+            task=self.task,
+            history=self.history,
+            file_path=action_input,
+            file_contents=f_content,
+        ).strip("\n")
+        self.history += f"observation: {resp}\n"
+        return f"File read: {action_input}"
+
+    def call_add(self, action_input):
+        d = os.path.dirname(action_input)
+        if not d.startswith(self.directory):
+            self.history += (
+                f"observation: files must be under directory {self.directory}\n"
+            )
+            return f"Invalid directory: {d}"
+        elif not action_input.endswith(".py"):
+            self.history += "observation: can only write .py files\n"
+            return "Only .py files are allowed."
         else:
-            st.info("No files in the project. Use the chat interface to generate code.")
-else:
-    st.info("No projects created yet. Create a project to start coding.")
+            if d and not os.path.exists(d):
+                os.makedirs(d)
+            if not os.path.exists(action_input):
+                resp = self.run_gpt(
+                    ADD_PROMPT,
+                    stop_tokens=["action:", "thought:", "observation:"],
+                    max_tokens=2048,
+                    task=self.task,
+                    history=self.history,
+                    file_path=action_input,
+                )
+                new_contents, description = parse_file_content(resp)
+                if new_contents is None:
+                    self.history += "observation: failed to write file\n"
+                    return "Failed to write file."
 
-# --- Terminal Interface ---
-st.subheader("Terminal (Workspace Context)")
-if st.session_state.workspace_projects:
-    selected_project = st.selectbox("Select project for terminal", list(st.session_state.workspace_projects.keys()))
-    terminal_input = st.text_input("Enter a command within the workspace:")
-    if st.button("Run Command"):
-        terminal_output = terminal_interface(terminal_input, selected_project)
-        st.code(terminal_output, language="bash")
-else:
-    st.info("No projects created yet. Create a project to use the terminal.")
+                with open(action_input, "w") as f:
+                    f.write(new_contents)
 
-# --- Chat Interface ---
-st.subheader("Chat with ")
-selected_agents = st.multiselect("Select AI agents", list(agents.keys()), key="agent_select")
-st.session_state.selected_agents = selected_agents
-agent_chat_input = st.text_area("Enter your message for the agents:", key="agent_input")
-if st.button("Send to Agents", key="agent_send"):
-    if selected_agents and agent_chat_input:
-        responses = {}
-        for agent in selected_agents:
-            response = get_agent_response(agent_chat_input, agents[agent]['system_prompt'])
-            responses[agent] = response
-        st.session_state.chat_history.append(f"User: {agent_chat_input}")
-        for agent, response in responses.items():
-            st.session_state.chat_history.append(f"{agent}: {response}")
-        st_chat(st.session_state.chat_history)  # Display chat history using st_chat
-    else:
-        st.warning("Please select at least one agent and enter a message.")
+                self.history += "observation: file successfully written\n"
+                self.history += f"observation: {description}\n"
+                return f"File added: {action_input}"
+            else:
+                self.history += "observation: file already exists\n"
+                return "File already exists."
 
-# --- Agent Control ---
-st.subheader("Agent Control")
-for agent_name in agents:
-    agent = agents[agent_name]
-    with st.expander(f"{agent_name} ({agent['description']})"):
-        if st.button(f"Activate {agent_name}", key=f"activate_{agent_name}"):
-            st.session_state.active_agent = agent_name
-            st.success(f"{agent_name} activated.")
-        if st.button(f"Deactivate {agent_name}", key=f"deactivate_{agent_name}"):
-            st.session_state.active_agent = None
-            st.success(f"{agent_name} deactivated.")
+    def call_test(self, action_input):
+        result = subprocess.run(
+            ["python", "-m", "pytest", "--collect-only", self.directory],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            self.history += f"observation: there are no tests! Test should be written in a test folder under {self.directory}\n"
+            return "No tests found."
+        result = subprocess.run(
+            ["python", "-m", "pytest", self.directory], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            self.history += "observation: tests pass\n"
+            return "All tests passed."
 
-# --- Automate Build Process ---
-st.subheader("Automate Build Process")
-if st.button("Automate"):
-    if st.session_state.selected_agents and project_name:
-        run_autonomous_build(st.session_state.selected_agents, project_name)
-    else:
-        st.warning("Please select at least one agent and create a project.")
+        resp = self.run_gpt(
+            UNDERSTAND_TEST_RESULTS_PROMPT,
+            stop_tokens=[],
+            max_tokens=256,
+            task=self.task,
+            history=self.history,
+            stdout=result.stdout[:5000],
+            stderr=result.stderr[:5000],
+        )
+        self.history += f"observation: tests failed: {resp}\n"
+        return f"Tests failed: {resp}"
 
-# --- Version Control ---
-st.subheader("Version Control")
-repo_url = st.text_input("Enter repository URL:")
-if st.button("Clone Repository"):
-    if repo_url and project_name:
-        try:
-            git.Repo.clone_from(repo_url, project_name)
-            st.success(f"Repository cloned successfully to {project_name}")
-        except git.GitCommandError as e:
-            st.error(f"Error cloning repository: {e}")
-    else:
-        st.warning("Please enter a repository URL and create a project.")
+pypelyne = Pypelyne()
 
-# --- Collaborative Agent Example ---
-st.subheader("Collaborative Agent Example")
-collab_agents = st.multiselect("Select AI agents for collaboration", list(agents.keys()), key="collab_agent_select")
-collab_project = st.text_input("Enter project name for collaboration:")
-collab_task = st.text_input("Enter collaborative task:")
-if st.button("Run Collaborative Task"):
-    if collab_agents and collab_project and collab_task:
-        collaborative_agent_example(collab_agents, collab_project, collab_task)
-    else:
-        st.warning("Please select agents, enter a project name, and specify a task.")
+    def create_agent(name: str, agent_type: str, complexity: int) -> Agent:
+        agent = Agent(name, agent_type, complexity)
+        pypelyne.add_agent(agent)
+        return agent
 
-# --- Display Information ---
-st.sidebar.subheader("Current State")
-st.sidebar.json(st.session_state)
-if st.session_state.active_agent:
-    display_agent_info(st.session_state.active_agent)
-display_workspace_projects()
-display_chat_history()
+    def create_tool(name: str, tool_type: str) -> Tool:
+        tool = Tool(name, tool_type)
+        pypelyne.add_tool(tool)
+        return tool
+
+    def main():
+    # Create a Flask app
+    app = Flask(__name__)
+
+    # Define a route for the chat interface
+    @app.route("/chat", methods=["GET", "POST"])
+    def chat():
+        if request.method == "POST":
+            # Get the user's input
+            user_input = request.form["input"]
+
+            # Run the input through the Pypelyne
+            response = pypelyne.run_action("MAIN", user_input)
+
+            # Return the response
+            return jsonify({"response": response})
+        else:
+            # Return the chat interface
+            return """
+                <html>
+                    <body>
+                        <h1>Pypelyne Chat Interface</h1>
+                        <form action="/chat" method="post">
+                            <input type="text" name="input" placeholder="Enter your input">
+                            <input type="submit" value="Submit">
+                        </form>
+                        <div id="response"></div>
+                        <script>
+                            // Update the response div with the response from the server
+                            function updateResponse(response) {
+                                document.getElementById("response").innerHTML = response;
+                            }
+                        </script>
+                    </body>
+                </html>
+            """
+
+    # Define a route for the agent creation interface
+    @app.route("/create_agent", methods=["GET", "POST"])
+    def create_agent_interface():
+        if request.method == "POST":
+            # Get the agent's name, type, and complexity
+            name = request.form["name"]
+            agent_type = request.form["type"]
+            complexity = int(request.form["complexity"])
+
+            # Create the agent
+            agent = create_agent(name, agent_type, complexity)
+
+            # Return a success message
+            return jsonify({"message": f"Agent {name} created successfully"})
+        else:
+            # Return the agent creation interface
+            return """
+                <html>
+                    <body>
+                        <h1>Create Agent</h1>
+                        <form action="/create_agent" method="post">
+                            <label for="name">Name:</label>
+                            <input type="text" id="name" name="name"><br><br>
+                            <label for="type">Type:</label>
+                            <select id="type" name="type">
+                                <option value="Task Executor">Task Executor</option>
+                                <option value="Information Retriever">Information Retriever</option>
+                                <option value="Decision Maker">Decision Maker</option>
+                                <option value="Data Analyzer">Data Analyzer</option>
+                            </select><br><br>
+                            <label for="complexity">Complexity:</label>
+                            <input type="number" id="complexity" name="complexity"><br><br>
+                            <input type="submit" value="Create Agent">
+                        </form>
+                    </body>
+                </html>
+            """
+
+    # Define a route for the tool creation interface
+    @app.route("/create_tool", methods=["GET", "POST"])
+    def create_tool_interface():
+        if request.method == "POST":
+            # Get the tool's name and type
+            name = request.form["name"]
+            tool_type = request.form["type"]
+
+            # Create the tool
+            tool = create_tool(name, tool_type)
+
+            # Return a success message
+            return jsonify({"message": f"Tool {name} created successfully"})
+        else:
+            # Return the tool creation interface
+            return """
+                <html>
+                    <body>
+                        <h1>Create Tool</h1>
+                        <form action="/create_tool" method="post">
+                            <label for="name">Name:</label>
+                            <input type="text" id="name" name="name"><br><br>
+                            <label for="type">Type:</label>
+                            <select id="type" name="type">
+                                <option value="Web Scraper">Web Scraper</option>
+                                <option value="Database Connector">Database Connector</option>
+                                <option value="API Caller">API Caller</option>
+                                <option value="File Handler">File Handler</option>
+                                <option value="Text Processor">Text Processor</option>
+                            </select><br><br>
+                            <input type="submit" value="Create Tool">
+                        </form>
+                    </body>
+                </html>
+            """
+
+    # Run the app
+    if __name__ == "__main__":
+        app.run(debug=True)
 
 if __name__ == "__main__":
-    st.sidebar.title("DevToolKit")
-    st.sidebar.info("This is an AI-powered development environment.")
-    st.run()
+    main()
