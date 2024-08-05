@@ -1,14 +1,28 @@
 import os
 import subprocess
+from typing import List, Dict, Tuple
 from huggingface_hub import InferenceClient
-import gradio as gr
-import random
-import time
-from typing import List, Dict
-from flask import Flask, request, jsonify
-from app.prompts import *
+import streamlit as st
 
-# Constants
+from app.prompts import (
+    ACTION_PROMPT,
+    ADD_PROMPT,
+    COMPRESS_HISTORY_PROMPT,
+    LOG_PROMPT,
+    LOG_RESPONSE,
+    MODIFY_PROMPT,
+    PREFIX,
+    READ_PROMPT,
+    TASK_PROMPT,
+    UNDERSTAND_TEST_RESULTS_PROMPT,
+)
+from app.utils import (
+    parse_action,
+    parse_file_content,
+    read_python_module_structure,
+)
+
+# --- Constants ---
 AGENT_TYPES = [
     "Task Executor",
     "Information Retriever",
@@ -24,26 +38,12 @@ TOOL_TYPES = [
 ]
 VERBOSE = False
 MAX_HISTORY = 100
-MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"  # Consider using a smaller model
 
-# Initialize Hugging Face client
+# --- Initialize Hugging Face client ---
 client = InferenceClient(MODEL)
 
-# Import necessary prompts and functions from the existing code
-from .prompts import (
-    ACTION_PROMPT,
-    ADD_PROMPT,
-    COMPRESS_HISTORY_PROMPT,
-    LOG_PROMPT,
-    LOG_RESPONSE,
-    MODIFY_PROMPT,
-    PREFIX,
-    READ_PROMPT,
-    TASK_PROMPT,
-    UNDERSTAND_TEST_RESULTS_PROMPT,
-)
-from .utils import parse_action, parse_file_content, read_python_module_structure
-
+# --- Classes ---
 class Agent:
     def __init__(self, name: str, agent_type: str, complexity: int):
         self.name = name
@@ -57,6 +57,7 @@ class Agent:
     def __str__(self):
         return f"{self.name} ({self.type}) - Complexity: {self.complexity}"
 
+
 class Tool:
     def __init__(self, name: str, tool_type: str):
         self.name = name
@@ -64,6 +65,7 @@ class Tool:
 
     def __str__(self):
         return f"{self.name} ({self.type})"
+
 
 class Pypelyne:
     def __init__(self):
@@ -84,11 +86,16 @@ class Pypelyne:
         time.sleep(2)  # Simulate processing time
         return f"Chat app generated with {len(self.agents)} agents and {len(self.tools)} tools."
 
-    def run_gpt(self, prompt_template, stop_tokens, max_tokens, **prompt_kwargs):
-        content = PREFIX.format(
-            module_summary=read_python_module_structure(self.directory)[0],
-            purpose=self.purpose,
-        ) + prompt_template.format(**prompt_kwargs)
+    def run_gpt(
+        self, prompt_template: str, stop_tokens: List[str], max_tokens: int, **prompt_kwargs
+    ) -> str:
+        content = (
+            PREFIX.format(
+                module_summary=read_python_module_structure(self.directory)[0],
+                purpose=self.purpose,
+            )
+            + prompt_template.format(**prompt_kwargs)
+        )
 
         if VERBOSE:
             print(LOG_PROMPT.format(content))
@@ -120,7 +127,7 @@ class Pypelyne:
         )
         self.history = f"observation: {resp}\n"
 
-    def run_action(self, action_name, action_input):
+    def run_action(self, action_name: str, action_input: str) -> str:
         if action_name == "COMPLETE":
             return "Task completed."
 
@@ -144,7 +151,7 @@ class Pypelyne:
         print(f"RUN: {action_name} {action_input}")
         return action_funcs[action_name](action_input)
 
-    def call_main(self, action_input):
+    def call_main(self, action_input: str) -> str:
         resp = self.run_gpt(
             ACTION_PROMPT,
             stop_tokens=["observation:", "task:"],
@@ -164,25 +171,31 @@ class Pypelyne:
                 return self.run_action(action_name, action_input)
         return "No valid action found."
 
-    def call_set_task(self, action_input):
-        self.task = self.run_gpt(
-            TASK_PROMPT,
-            stop_tokens=[],
-            max_tokens=64,
-            task=self.task,
-            history=self.history,
-        ).strip("\n")
+    def call_set_task(self, action_input: str) -> str:
+        self.task = (
+            self.run_gpt(
+                TASK_PROMPT,
+                stop_tokens=[],
+                max_tokens=64,
+                task=self.task,
+                history=self.history,
+            )
+            .strip("\n")
+            .strip()
+        )
         self.history += f"observation: task has been updated to: {self.task}\n"
         return f"Task updated: {self.task}"
 
-    def call_modify(self, action_input):
+    def call_modify(self, action_input: str) -> str:
         if not os.path.exists(action_input):
             self.history += "observation: file does not exist\n"
             return "File does not exist."
 
         content = read_python_module_structure(self.directory)[1]
         f_content = (
-            content[action_input] if content[action_input] else "< document is empty >"
+            content[action_input]
+            if content[action_input]
+            else "< document is empty >"
         )
 
         resp = self.run_gpt(
@@ -206,14 +219,16 @@ class Pypelyne:
         self.history += f"observation: {description}\n"
         return f"File modified: {action_input}"
 
-    def call_read(self, action_input):
+    def call_read(self, action_input: str) -> str:
         if not os.path.exists(action_input):
             self.history += "observation: file does not exist\n"
             return "File does not exist."
 
         content = read_python_module_structure(self.directory)[1]
         f_content = (
-            content[action_input] if content[action_input] else "< document is empty >"
+            content[action_input]
+            if content[action_input]
+            else "< document is empty >"
         )
 
         resp = self.run_gpt(
@@ -228,7 +243,7 @@ class Pypelyne:
         self.history += f"observation: {resp}\n"
         return f"File read: {action_input}"
 
-    def call_add(self, action_input):
+    def call_add(self, action_input: str) -> str:
         d = os.path.dirname(action_input)
         if not d.startswith(self.directory):
             self.history += (
@@ -265,7 +280,7 @@ class Pypelyne:
                 self.history += "observation: file already exists\n"
                 return "File already exists."
 
-    def call_test(self, action_input):
+    def call_test(self, action_input: str) -> str:
         result = subprocess.run(
             ["python", "-m", "pytest", "--collect-only", self.directory],
             capture_output=True,
@@ -275,7 +290,9 @@ class Pypelyne:
             self.history += f"observation: there are no tests! Test should be written in a test folder under {self.directory}\n"
             return "No tests found."
         result = subprocess.run(
-            ["python", "-m", "pytest", self.directory], capture_output=True, text=True
+            ["python", "-m", "pytest", self.directory],
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             self.history += "observation: tests pass\n"
@@ -293,132 +310,89 @@ class Pypelyne:
         self.history += f"observation: tests failed: {resp}\n"
         return f"Tests failed: {resp}"
 
+
+# --- Global Pypelyne Instance ---
 pypelyne = Pypelyne()
 
+
+# --- Helper Functions ---
 def create_agent(name: str, agent_type: str, complexity: int) -> Agent:
     agent = Agent(name, agent_type, complexity)
     pypelyne.add_agent(agent)
     return agent
+
 
 def create_tool(name: str, tool_type: str) -> Tool:
     tool = Tool(name, tool_type)
     pypelyne.add_tool(tool)
     return tool
 
+
+# --- Streamlit App Code ---
 def main():
-    # Create a Flask app
-    app = Flask(__name__)
+    st.title("🧠 Pypelyne: Your AI-Powered Coding Assistant")
 
-    # Define a route for the chat interface
-    @app.route("/chat", methods=["GET", "POST"])
-    def chat():
-        if request.method == "POST":
-            # Get the user's input
-            user_input = request.form["input"]
+    # --- Sidebar ---
+    st.sidebar.title("⚙️ Settings")
+    pypelyne.directory = st.sidebar.text_input(
+        "Project Directory:", value=".", help="Path to your coding project"
+    )
+    pypelyne.purpose = st.sidebar.text_area(
+        "Project Purpose:",
+        help="Describe the purpose of your coding project.",
+    )
 
-            # Run the input through the Pypelyne
-            response = pypelyne.run_action("MAIN", user_input)
+    # --- Agent and Tool Management ---
+    st.sidebar.header("🤖 Agents")
+    show_agent_creation = st.sidebar.expander(
+        "Create New Agent", expanded=False
+    )
+    with show_agent_creation:
+        agent_name = st.text_input("Agent Name:")
+        agent_type = st.selectbox("Agent Type:", AGENT_TYPES)
+        agent_complexity = st.slider("Complexity (1-5):", 1, 5, 3)
+        if st.button("Add Agent"):
+            create_agent(agent_name, agent_type, agent_complexity)
 
-            # Return the response
-            return jsonify({"response": response})
-        else:
-            # Return the chat interface
-            return """
-                <html>
-                    <body>
-                        <h1>Pypelyne Chat Interface</h1>
-                        <form action="/chat" method="post">
-                            <input type="text" name="input" placeholder="Enter your input">
-                            <input type="submit" value="Submit">
-                        </form>
-                        <div id="response"></div>
-                        <script>
-                            // Update the response div with the response from the server
-                            function updateResponse(response) {
-                                document.getElementById("response").innerHTML = response;
-                            }
-                        </script>
-                    </body>
-                </html>
-            """
+    st.sidebar.header("🛠️ Tools")
+    show_tool_creation = st.sidebar.expander("Create New Tool", expanded=False)
+    with show_tool_creation:
+        tool_name = st.text_input("Tool Name:")
+        tool_type = st.selectbox("Tool Type:", TOOL_TYPES)
+        if st.button("Add Tool"):
+            create_tool(tool_name, tool_type)
 
-    # Define a route for the agent creation interface
-    @app.route("/create_agent", methods=["GET", "POST"])
-    def create_agent_interface():
-        if request.method == "POST":
-            # Get the agent's name, type, and complexity
-            name = request.form["name"]
-            agent_type = request.form["type"]
-            complexity = int(request.form["complexity"])
+    # --- Display Agents and Tools ---
+    st.sidebar.subheader("Active Agents:")
+    for agent in pypelyne.agents:
+        st.sidebar.write(f"- {agent}")
 
-            # Create the agent
-            agent = create_agent(name, agent_type, complexity)
+    st.sidebar.subheader("Available Tools:")
+    for tool in pypelyne.tools:
+        st.sidebar.write(f"- {tool}")
 
-            # Return a success message
-            return jsonify({"message": f"Agent {name} created successfully"})
-        else:
-            # Return the agent creation interface
-            return """
-                <html>
-                    <body>
-                        <h1>Create Agent</h1>
-                        <form action="/create_agent" method="post">
-                            <label for="name">Name:</label>
-                            <input type="text" id="name" name="name"><br><br>
-                            <label for="type">Type:</label>
-                            <select id="type" name="type">
-                                <option value="Task Executor">Task Executor</option>
-                                <option value="Information Retriever">Information Retriever</option>
-                                <option value="Decision Maker">Decision Maker</option>
-                                <option value="Data Analyzer">Data Analyzer</option>
-                            </select><br><br>
-                            <label for="complexity">Complexity:</label>
-                            <input type="number" id="complexity" name="complexity"><br><br>
-                            <input type="submit" value="Create Agent">
-                        </form>
-                    </body>
-                </html>
-            """
+    # --- Main Content Area ---
+    st.header("💻 Code Interaction")
 
-    # Define a route for the tool creation interface
-    @app.route("/create_tool", methods=["GET", "POST"])
-    def create_tool_interface():
-        if request.method == "POST":
-            # Get the tool's name and type
-            name = request.form["name"]
-            tool_type = request.form["type"]
+    task_input = st.text_area(
+        "🎯 Task:",
+        value=pypelyne.task if pypelyne.task else "",
+        help="Describe the coding task you want to perform.",
+    )
+    if task_input:
+        pypelyne.task = task_input
 
-            # Create the tool
-            tool = create_tool(name, tool_type)
+    user_input = st.text_input(
+        "💬 Your Input:", help="Provide instructions or ask questions."
+    )
 
-            # Return a success message
-            return jsonify({"message": f"Tool {name} created successfully"})
-        else:
-            # Return the tool creation interface
-            return """
-                <html>
-                    <body>
-                        <h1>Create Tool</h1>
-                        <form action="/create_tool" method="post">
-                            <label for="name">Name:</label>
-                            <input type="text" id="name" name="name"><br><br>
-                            <label for="type">Type:</label>
-                            <select id="type" name="type">
-                                <option value="Web Scraper">Web Scraper</option>
-                                <option value="Database Connector">Database Connector</option>
-                                <option value="API Caller">API Caller</option>
-                                <option value="File Handler">File Handler</option>
-                                <option value="Text Processor">Text Processor</option>
-                            </select><br><br>
-                            <input type="submit" value="Create Tool">
-                        </form>
-                    </body>
-                </html>
-            """
+    if st.button("Execute"):
+        if user_input:
+            with st.spinner("Pypelyne is working..."):
+                response = pypelyne.run_action("MAIN", user_input)
+                st.write("Pypelyne Says: ", response)
 
-    # Run the app
-    if __name__ == "__main__":
-        app.run(debug=True)
 
+# --- Run the Streamlit app ---
 if __name__ == "__main__":
     main()
