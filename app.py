@@ -1,5 +1,3 @@
-
-
 import os
 import subprocess
 from huggingface_hub import InferenceClient
@@ -293,17 +291,17 @@ class Pypelyne:
 
 pypelyne = Pypelyne()
 
-    def create_agent(name: str, agent_type: str, complexity: int) -> Agent:
-        agent = Agent(name, agent_type, complexity)
-        pypelyne.add_agent(agent)
-        return agent
+def create_agent(name: str, agent_type: str, complexity: int) -> Agent:
+    agent = Agent(name, agent_type, complexity)
+    pypelyne.add_agent(agent)
+    return agent
 
-    def create_tool(name: str, tool_type: str) -> Tool:
-        tool = Tool(name, tool_type)
-        pypelyne.add_tool(tool)
-        return tool
+def create_tool(name: str, tool_type: str) -> Tool:
+    tool = Tool(name, tool_type)
+    pypelyne.add_tool(tool)
+    return tool
 
-    def main():
+def main():
     # Create a Flask app
     app = Flask(__name__)
 
