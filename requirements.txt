@@ -4,6 +4,7 @@ streamlit
 streamlit-chat
 rasa
 torch
+gevent==24.2.1
 black
 pylint
 sentencepiece==0.1.96
