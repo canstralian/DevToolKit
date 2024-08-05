@@ -6,6 +6,7 @@ import random
 import time
 from typing import List, Dict
 from flask import Flask, request, jsonify
+from home.user.app.prompts import *
 
 # Constants
 AGENT_TYPES = [
