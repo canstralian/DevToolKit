@@ -21,7 +21,7 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from streamlit_ace import st_ace
-from streamlit_chat import st_chat
+from streamlit_chat import message
 
 # --- Constants ---
 MODEL_NAME = "google/flan-t5-xl"  # Consider using a more powerful model
@@ -74,6 +74,8 @@ if "selected_agents" not in st.session_state:
     st.session_state.selected_agents = []
 if "current_project" not in st.session_state:
     st.session_state.current_project = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 # --- Helper Functions ---
 def add_code_to_workspace(project_name: str, code: str, file_name: str):
@@ -143,8 +145,43 @@ def combine_and_process_responses(responses: Dict[str, str], task: str) -> str:
     combined = "\n\n".join([f"{agent}: {response}" for agent, response in responses.items()])
     return f"Combined response for task '{task}':\n\n{combined}"
 
-# --- Streamlit UI ---
-st.title("DevToolKit: AI-Powered Development Environment")
+# --- Chat Interface ---
+st.subheader("Chat with AI Agents")
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# React to user input
+if prompt := st.chat_input("What is up?"):
+    # Display user message in chat message container
+    st.chat_message("user").markdown(prompt)
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    # Process the message with selected agents
+    if st.session_state.selected_agents:
+        responses = {}
+        for agent in st.session_state.selected_agents:
+            response = get_agent_response(prompt, agents[agent]['system_prompt'])
+            responses[agent] = response
+
+        # Combine responses (you may want to implement a more sophisticated combination method)
+        combined_response = "\n".join([f"{agent}: {resp}" for agent, resp in responses.items()])
+
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            st.markdown(combined_response)
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": combined_response})
+    else:
+        st.warning("Please select at least one agent to chat with.")
+
+# Agent selection
+st.sidebar.subheader("Select AI Agents")
+st.session_state.selected_agents = st.sidebar.multiselect("Select AI agents", list(agents.keys()), key="agent_select")
+
 
 # --- Project Management ---
 st.header("Project Management")
@@ -191,7 +228,7 @@ else:
     st.info("No projects created yet. Create a project to use the terminal.")
 
 # --- Chat Interface ---
-st.subheader("Chat with AI Agents")
+st.subheader("Chat with ")
 selected_agents = st.multiselect("Select AI agents", list(agents.keys()), key="agent_select")
 st.session_state.selected_agents = selected_agents
 agent_chat_input = st.text_area("Enter your message for the agents:", key="agent_input")
@@ -263,3 +300,4 @@ display_chat_history()
 if __name__ == "__main__":
     st.sidebar.title("DevToolKit")
     st.sidebar.info("This is an AI-powered development environment.")
+    st.run()
