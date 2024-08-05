@@ -92,15 +92,18 @@ class Pypelyne:
         if VERBOSE:
             print(LOG_PROMPT.format(content))
 
-        stream = client.text_generation(
-            prompt=content,
-            max_new_tokens=max_tokens,
-            stop_sequences=stop_tokens if stop_tokens else None,
-            do_sample=True,
-            temperature=0.7,
-        )
-
-        resp = "".join(token for token in stream)
+        try:
+            stream = client.text_generation(
+                prompt=content,
+                max_new_tokens=max_tokens,
+                stop_sequences=stop_tokens if stop_tokens else None,
+                do_sample=True,
+                temperature=0.7,
+            )
+            resp = "".join(token for token in stream)
+        except Exception as e:
+            print(f"Error in run_gpt: {e}")
+            resp = f"Error: {e}"
 
         if VERBOSE:
             print(LOG_RESPONSE.format(resp))
