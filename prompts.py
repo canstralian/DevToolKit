@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableSequence
 from langchain_huggingface import HuggingFaceEndpoint
 
 # Initialize Hugging Face API
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = "hf_DDqJJHHhhjGGjjHUYTRewsRRFFGhjkKJHgfr"
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = "hf_token"
 
 # Load LLM
 llm = HuggingFaceHub(repo_id="tiiuae/falcon-7b-instruct", model_kwargs={"temperature": 0.1, "max_new_tokens": 500})
