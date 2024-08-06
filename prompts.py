@@ -1,8 +1,8 @@
 import gradio as gr
 import os
-from langchain import PromptTemplate
-from langchain.chains import LLMChain
-from langchain.llms import HuggingFaceHub
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence
+from langchain_huggingface import HuggingFaceEndpoint
 
 # Initialize Hugging Face API
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = "hf_DDqJJHHhhjGGjjHUYTRewsRRFFGhjkKJHgfr"
