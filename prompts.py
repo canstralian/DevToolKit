@@ -2,7 +2,12 @@ import gradio as gr
 import os
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableSequence
-from langchain_huggingface import HuggingFaceEndpoint
+from langchain_community.llms import HuggingFaceEndpoint
+from huggingface_hub.inference_api import InferenceApi as InferenceClient
+
+import streamlit as st
+
+from prompts import (
 
 # Initialize Hugging Face API
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = "hf_token"
