@@ -1,7 +1,7 @@
 streamlit==1.15.0
 langchain-core==0.2.23
 langchain-community==0.2.10
-langchain==0.2.7
+langchain==0.2.9
 huggingface-hub==0.13.0
 transformers
 transformers[torch]
