@@ -1,13 +1,9 @@
-import os
-import subprocess
-import time
-from typing import List, Dict
-
-from huggingface_hub import InferenceClient
-import streamlit as st
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableSequence
 from langchain_community.llms import HuggingFaceEndpoint
+from huggingface_hub.inference_api import InferenceApi as InferenceClient
+
+import streamlit as st
 
 from prompts import (
     ACTION_PROMPT,
