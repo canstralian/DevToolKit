@@ -5,6 +5,9 @@ from typing import List, Dict
 
 from huggingface_hub import InferenceClient
 import streamlit as st
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence
+from langchain_huggingface import HuggingFaceEndpoint
 
 from prompts import (
     ACTION_PROMPT,
