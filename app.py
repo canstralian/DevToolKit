@@ -5,6 +5,10 @@ from huggingface_hub.inference_api import InferenceApi as InferenceClient
 
 import streamlit as st
 
+# Load LLM
+llm = HuggingFaceHub(repo_id="tiiuae/falcon-7b-instruct", model_kwargs={"temperature": 0.1, "max_new_tokens": 500})
+
+
 from prompts import (
     ACTION_PROMPT,
     ADD_PROMPT,
