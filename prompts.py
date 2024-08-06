@@ -1,20 +1,3 @@
-import gradio as gr
-import os
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnableSequence
-from langchain_community.llms import HuggingFaceEndpoint
-from huggingface_hub.inference_api import InferenceApi as InferenceClient
-
-import streamlit as st
-
-from prompts import (
-
-# Initialize Hugging Face API
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = "hf_token"
-
-# Load LLM
-llm = HuggingFaceHub(repo_id="tiiuae/falcon-7b-instruct", model_kwargs={"temperature": 0.1, "max_new_tokens": 500})
-
 # Define prompt templates
 class PromptTemplates:
     PREFIX = """
@@ -241,5 +224,3 @@ iface = gr.Interface(
     title="AI-Powered Code Assistant",
     description="Enter your code and select a task. The AI will analyze your code and provide assistance."
 )
-
-iface.launch()
