@@ -1,239 +1,480 @@
 import os
 import subprocess
-import streamlit as st
-from transformers.pipelines import pipeline
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModel, RagRetriever, AutoModelForSeq2SeqLM
-import black
-from pylint import lint
-from io import StringIO
-import sys
-import torch
-from huggingface_hub import hf_hub_url, cached_download, HfApi
-from datetime import datetime
-import requests
 import random
-from huggingface_hub.hf_api import Repository  # Assuming this is how you import the Repository class
+from huggingface_hub import InferenceClient
+import gradio as gr
+from i_search import google
+from i_search import i_search as i_s
+from agent import (
+    ACTION_PROMPT,
+    ADD_PROMPT,
+    COMPRESS_HISTORY_PROMPT,
+    LOG_PROMPT,
+    LOG_RESPONSE,
+    MODIFY_PROMPT,
+    PREFIX,
+    SEARCH_QUERY,
+    READ_PROMPT,
+    TASK_PROMPT,
+    UNDERSTAND_TEST_RESULTS_PROMPT,
+)
+from utils import parse_action, parse_file_content, read_python_module_structure
+from datetime import datetime
+now = datetime.now()
+date_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-# Set your Hugging Face API key here
-# hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
-# Get Hugging Face token from secrets.toml - this line should already be in the main code
-hf_token = st.secrets["huggingface"]["hf_token"]
+client = InferenceClient(
+    "mistralai/Mixtral-8x7B-Instruct-v0.1"
+)
 
-HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
-PROJECT_ROOT = "projects"
-AGENT_DIRECTORY = "agents"
+############################################
 
-# Global state to manage communication between Tool Box and Workspace Chat App
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'terminal_history' not in st.session_state:
-    st.session_state.terminal_history = []
-if 'workspace_projects' not in st.session_state:
-    st.session_state.workspace_projects = {}
-if 'available_agents' not in st.session_state:
-    st.session_state.available_agents = []
-if 'current_state' not in st.session_state:
-    st.session_state.current_state = {
-        'toolbox': {},
-        'workspace_chat': {}
-    }
 
-# List of top downloaded free code-generative models from Hugging Face Hub
-AVAILABLE_CODE_GENERATIVE_MODELS = [
-    "bigcode/starcoder",  # Popular and powerful
-    "Salesforce/codegen-350M-mono",  # Smaller, good for quick tasks
-    "microsoft/CodeGPT-small",  # Smaller, good for quick tasks
-    "google/flan-t5-xl",  # Powerful, good for complex tasks
-    "facebook/bart-large-cnn",  # Good for text-to-code tasks
+VERBOSE = True
+MAX_HISTORY = 100
+#MODEL = "gpt-3.5-turbo"  # "gpt-4"
+
+
+def format_prompt(message, history):
+  prompt = "<s>"
+  for user_prompt, bot_response in history:
+    prompt += f"[INST] {user_prompt} [/INST]"
+    prompt += f" {bot_response}</s> "
+  prompt += f"[INST] {message} [/INST]"
+  return prompt
+
+
+
+def run_gpt(
+    prompt_template,
+    stop_tokens,
+    max_tokens,
+    module_summary,
+    purpose,
+    **prompt_kwargs,
+):
+    seed = random.randint(1,1111111111111111)
+
+    generate_kwargs = dict(
+        temperature=0.9,
+        max_new_tokens=1048,
+        top_p=0.95,
+        repetition_penalty=1.0,
+        do_sample=True,
+        seed=seed,
+    )
+
+    
+    content = PREFIX.format(
+        date_time_str=date_time_str,
+        purpose=purpose,
+    ) + prompt_template.format(**prompt_kwargs)
+    if VERBOSE:
+        print(LOG_PROMPT.format(content))
+    
+    
+    #formatted_prompt = format_prompt(f"{system_prompt}, {prompt}", history)
+    #formatted_prompt = format_prompt(f'{content}', history)
+
+    stream = client.text_generation(content, **generate_kwargs, stream=True, details=True, return_full_text=False)
+    resp = ""
+    for response in stream:
+        resp += response.token.text
+
+    if VERBOSE:
+        print(LOG_RESPONSE.format(resp))
+    return resp
+
+
+def compress_history(purpose, task, history, directory):
+    module_summary, _, _ = read_python_module_structure(directory)
+    resp = run_gpt(
+        COMPRESS_HISTORY_PROMPT,
+        stop_tokens=["observation:", "task:", "action:", "thought:"],
+        max_tokens=512,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    )
+    history = "observation: {}\n".format(resp)
+    return history
+    
+def call_search(purpose, task, history, directory, action_input):
+    print("CALLING SEARCH")
+    try:
+        if "http" in action_input:
+            if "<" in action_input:
+                action_input = action_input.strip("<")
+            if ">" in action_input:
+                action_input = action_input.strip(">")
+            response = i_s(action_input)
+            #response = google(search_return)
+            print(response)
+            history += "observation: search result is: {}\n".format(response)
+        else:
+            history += "observation: I need to provide a valid URL to 'action: SEARCH action_input=URL'\n"
+    except Exception as e:
+        history += "observation: {}'\n".format(e)
+    return "MAIN", None, history, task
+
+def call_main(purpose, task, history, directory, action_input):
+    module_summary, _, _ = read_python_module_structure(directory)
+    resp = run_gpt(
+        ACTION_PROMPT,
+        stop_tokens=["observation:", "task:"],
+        max_tokens=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    )
+    lines = resp.strip().strip("\n").split("\n")
+    for line in lines:
+        if line == "":
+            continue
+        if line.startswith("thought: "):
+            history += "{}\n".format(line)
+        elif line.startswith("action: "):
+            
+            action_name, action_input = parse_action(line)
+            print (f'ACTION_NAME :: {action_name}')
+            print (f'ACTION_INPUT :: {action_input}')
+            
+            history += "{}\n".format(line)
+            if "COMPLETE" in action_name or "COMPLETE" in action_input:
+                task = "END"
+                return action_name, action_input, history, task
+            else:
+                return action_name, action_input, history, task
+        else:
+            history += "{}\n".format(line)
+            #history += "observation: the following command did not produce any useful output: '{}', I need to check the commands syntax, or use a different command\n".format(line)
+            
+            #return action_name, action_input, history, task
+            #assert False, "unknown action: {}".format(line)
+    return "MAIN", None, history, task
+
+
+def call_test(purpose, task, history, directory, action_input):
+    result = subprocess.run(
+        ["python", "-m", "pytest", "--collect-only", directory],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        history += "observation: there are no tests! Test should be written in a test folder under {}\n".format(
+            directory
+        )
+        return "MAIN", None, history, task
+    result = subprocess.run(
+        ["python", "-m", "pytest", directory], capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        history += "observation: tests pass\n"
+        return "MAIN", None, history, task
+    module_summary, content, _ = read_python_module_structure(directory)
+    resp = run_gpt(
+        UNDERSTAND_TEST_RESULTS_PROMPT,
+        stop_tokens=[],
+        max_tokens=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        stdout=result.stdout[:5000],  # limit amount of text
+        stderr=result.stderr[:5000],  # limit amount of text
+    )
+    history += "observation: tests failed: {}\n".format(resp)
+    return "MAIN", None, history, task
+
+
+def call_set_task(purpose, task, history, directory, action_input):
+    module_summary, content, _ = read_python_module_structure(directory)
+    task = run_gpt(
+        TASK_PROMPT,
+        stop_tokens=[],
+        max_tokens=64,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+    ).strip("\n")
+    history += "observation: task has been updated to: {}\n".format(task)
+    return "MAIN", None, history, task
+
+
+def call_read(purpose, task, history, directory, action_input):
+    if not os.path.exists(action_input):
+        history += "observation: file does not exist\n"
+        return "MAIN", None, history, task
+    module_summary, content, _ = read_python_module_structure(directory)
+    f_content = (
+        content[action_input] if content[action_input] else "< document is empty >"
+    )
+    resp = run_gpt(
+        READ_PROMPT,
+        stop_tokens=[],
+        max_tokens=256,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        file_path=action_input,
+        file_contents=f_content,
+    ).strip("\n")
+    history += "observation: {}\n".format(resp)
+    return "MAIN", None, history, task
+
+
+def call_modify(purpose, task, history, directory, action_input):
+    if not os.path.exists(action_input):
+        history += "observation: file does not exist\n"
+        return "MAIN", None, history, task
+    (
+        module_summary,
+        content,
+        _,
+    ) = read_python_module_structure(directory)
+    f_content = (
+        content[action_input] if content[action_input] else "< document is empty >"
+    )
+    resp = run_gpt(
+        MODIFY_PROMPT,
+        stop_tokens=["action:", "thought:", "observation:"],
+        max_tokens=2048,
+        module_summary=module_summary,
+        purpose=purpose,
+        task=task,
+        history=history,
+        file_path=action_input,
+        file_contents=f_content,
+    )
+    new_contents, description = parse_file_content(resp)
+    if new_contents is None:
+        history += "observation: failed to modify file\n"
+        return "MAIN", None, history, task
+
+    with open(action_input, "w") as f:
+        f.write(new_contents)
+
+    history += "observation: file successfully modified\n"
+    history += "observation: {}\n".format(description)
+    return "MAIN", None, history, task
+
+
+def call_add(purpose, task, history, directory, action_input):
+    d = os.path.dirname(action_input)
+    if not d.startswith(directory):
+        history += "observation: files must be under directory {}\n".format(directory)
+    elif not action_input.endswith(".py"):
+        history += "observation: can only write .py files\n"
+    else:
+        if d and not os.path.exists(d):
+            os.makedirs(d)
+        if not os.path.exists(action_input):
+            module_summary, _, _ = read_python_module_structure(directory)
+            resp = run_gpt(
+                ADD_PROMPT,
+                stop_tokens=["action:", "thought:", "observation:"],
+                max_tokens=2048,
+                module_summary=module_summary,
+                purpose=purpose,
+                task=task,
+                history=history,
+                file_path=action_input,
+            )
+            new_contents, description = parse_file_content(resp)
+            if new_contents is None:
+                history += "observation: failed to write file\n"
+                return "MAIN", None, history, task
+
+            with open(action_input, "w") as f:
+                f.write(new_contents)
+
+            history += "observation: file successfully written\n"
+            history += "obsertation: {}\n".format(description)
+        else:
+            history += "observation: file already exists\n"
+    return "MAIN", None, history, task
+def end_fn(purpose, task, history, directory, action_input):
+    task = "END"
+    return "COMPLETE", None, history, task
+NAME_TO_FUNC = {
+    "MAIN": call_main,
+    "UPDATE-TASK": call_set_task,
+    "SEARCH": call_search,
+    "COMPLETE": end_fn,
+
+}
+
+
+def run_action(purpose, task, history, directory, action_name, action_input):
+    if "RESPONSE" in action_name:
+        task="END"
+        return action_name, action_input, history, task
+
+    # compress the history when it is long
+    if len(history.split("\n")) > MAX_HISTORY:
+        if VERBOSE:
+            print("COMPRESSING HISTORY")
+        history = compress_history(purpose, task, history, directory)
+
+    assert action_name in NAME_TO_FUNC
+
+    print("RUN: ", action_name, action_input)
+    return NAME_TO_FUNC[action_name](purpose, task, history, directory, action_input)
+
+
+def run(purpose,hist):
+    
+    print(purpose)
+    print(hist)
+    task=None
+    directory="./"
+    history = ""
+    action_name = "UPDATE-TASK" if task is None else "MAIN"
+    action_input = None
+    while True:
+        print("")
+        print("")
+        print("---")
+        print("purpose:", purpose)
+        print("task:", task)
+        print("---")
+        print(history)
+        print("---")
+
+        action_name, action_input, history, task = run_action(
+            purpose,
+            task,
+            history,
+            directory,
+            action_name,
+            action_input,
+        )
+        if task == "END":
+            return history
+
+
+
+################################################
+
+def format_prompt(message, history):
+  prompt = "<s>"
+  for user_prompt, bot_response in history:
+    prompt += f"[INST] {user_prompt} [/INST]"
+    prompt += f" {bot_response}</s> "
+  prompt += f"[INST] {message} [/INST]"
+  return prompt
+agents =[
+    "WEB_DEV",
+    "AI_SYSTEM_PROMPT",
+    "PYTHON_CODE_DEV"
+]
+def generate(
+        prompt, history, agent_name=agents[0], sys_prompt="", temperature=0.9, max_new_tokens=256, top_p=0.95, repetition_penalty=1.0,
+):
+    seed = random.randint(1,1111111111111111)
+
+    agent=prompts.WEB_DEV
+    if agent_name == "WEB_DEV":
+        agent = prompts.WEB_DEV
+    if agent_name == "AI_SYSTEM_PROMPT":
+        agent = prompts.AI_SYSTEM_PROMPT
+    if agent_name == "PYTHON_CODE_DEV":
+        agent = prompts.PYTHON_CODE_DEV        
+    system_prompt=agent
+    temperature = float(temperature)
+    if temperature < 1e-2:
+        temperature = 1e-2
+    top_p = float(top_p)
+
+    generate_kwargs = dict(
+        temperature=temperature,
+        max_new_tokens=max_new_tokens,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        do_sample=True,
+        seed=seed,
+    )
+
+    formatted_prompt = format_prompt(f"{system_prompt}, {prompt}", history)
+    stream = client.text_generation(formatted_prompt, **generate_kwargs, stream=True, details=True, return_full_text=False)
+    output = ""
+
+    for response in stream:
+        output += response.token.text
+        yield output
+    return output
+
+
+additional_inputs=[
+    gr.Dropdown(
+        label="Agents",
+        choices=[s for s in agents],
+        value=agents[0],
+        interactive=True,
+        ),
+    gr.Textbox(
+        label="System Prompt",
+        max_lines=1,
+        interactive=True,
+    ),
+    gr.Slider(
+        label="Temperature",
+        value=0.9,
+        minimum=0.0,
+        maximum=1.0,
+        step=0.05,
+        interactive=True,
+        info="Higher values produce more diverse outputs",
+    ),
+
+    gr.Slider(
+        label="Max new tokens",
+        value=1048*10,
+        minimum=0,
+        maximum=1048*10,
+        step=64,
+        interactive=True,
+        info="The maximum numbers of new tokens",
+    ),
+    gr.Slider(
+        label="Top-p (nucleus sampling)",
+        value=0.90,
+        minimum=0.0,
+        maximum=1,
+        step=0.05,
+        interactive=True,
+        info="Higher values sample more low-probability tokens",
+    ),
+    gr.Slider(
+        label="Repetition penalty",
+        value=1.2,
+        minimum=1.0,
+        maximum=2.0,
+        step=0.05,
+        interactive=True,
+        info="Penalize repeated tokens",
+    ),
+
+
 ]
 
-# Load pre-trained RAG retriever
-rag_retriever = RagRetriever.from_pretrained("facebook/rag-token-base")  # Use a Hugging Face RAG model
-
-# Load pre-trained chat model
-chat_model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/DialoGPT-medium")  # Use a Hugging Face chat model
-
-# Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
-
-def process_input(user_input):
-    # Input pipeline: Tokenize and preprocess user input
-    input_ids = tokenizer(user_input, return_tensors="pt").input_ids
-    attention_mask = tokenizer(user_input, return_tensors="pt").attention_mask
-
-    # RAG model: Generate response
-    with torch.no_grad():
-        output = rag_retriever(input_ids, attention_mask=attention_mask)
-        response = output.generator_outputs[0].sequences[0]
-
-    # Chat model: Refine response
-    chat_input = tokenizer(response, return_tensors="pt")
-    chat_input["input_ids"] = chat_input["input_ids"].unsqueeze(0)
-    chat_input["attention_mask"] = chat_input["attention_mask"].unsqueeze(0)
-    with torch.no_grad():
-        chat_output = chat_model(**chat_input)
-        refined_response = chat_output.sequences[0]
-
-    # Output pipeline: Return final response
-    return refined_response
-
-class AIAgent:
-    def __init__(self, name, description, skills, hf_api=None):
-        self.name = name
-        self.description = description
-        self.skills = skills
-        self._hf_api = hf_api
-        self._hf_token = hf_token  # Store the token here
-
-    @property
-    def hf_api(self):
-        if not self._hf_api and self.has_valid_hf_token():
-            self._hf_api = HfApi(token=self._hf_token)
-        return self._hf_api
-
-    def has_valid_hf_token(self):
-        return bool(self._hf_token)
-
-    async def autonomous_build(self, chat_history, workspace_projects, project_name, selected_model, hf_token):
-        self._hf_token = hf_token
-        # Continuation of previous methods
-        summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
-        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
-
-        # Analyze chat history and workspace projects to suggest actions
-        # Example:
-        # - Check if the user has requested to create a new file
-        # - Check if the user has requested to install a package
-        # - Check if the user has requested to run a command
-        # - Check if the user has requested to generate code
-        # - Check if the user has requested to translate code
-        # - Check if the user has requested to summarize text
-        # - Check if the user has requested to analyze sentiment
-
-        # Generate a response based on the analysis
-        next_step = "Based on the current state, the next logical step is to implement the main application logic."
-
-        # Ensure project folder exists
-        project_path = os.path.join(PROJECT_ROOT, project_name)
-        if not os.path.exists(project_path):
-            os.makedirs(project_path)
-
-        # Create requirements.txt if it doesn't exist
-        requirements_file = os.path.join(project_path, "requirements.txt")
-        if not os.path.exists(requirements_file):
-            with open(requirements_file, "w") as f:
-                f.write("# Add your project's dependencies here\n")
-
-        # Create app.py if it doesn't exist
-        app_file = os.path.join(project_path, "app.py")
-        if not os.path.exists(app_file):
-            with open(app_file, "w") as f:
-                f.write("# Your project's main application logic goes here\n")
-
-        # Generate GUI code for app.py if requested
-        if "create a gui" in summary.lower():
-            gui_code = generate_code("Create a simple GUI for this application", selected_model)
-            with open(app_file, "a") as f:
-                f.write(gui_code)
-
-        # Run the default build process
-        build_command = "pip install -r requirements.txt && python app.py"
-        try:
-            result = subprocess.run(build_command, shell=True, capture_output=True, text=True, cwd=project_path)
-            st.write(f"Build Output:\n{result.stdout}")
-            if result.stderr:
-                st.error(f"Build Errors:\n{result.stderr}")
-        except Exception as e:
-            st.error(f"Build Error: {e}")
-
-        return summary, next_step
-    
-    def deploy_built_space_to_hf(self):
-        if not self._hf_api or not self._hf_token:
-            raise ValueError("Cannot deploy the Space since no valid Hugoging Face API connection was established.")
-
-        # Assuming you have a function to get the files for your Space
-        repository_name = f"my-awesome-space_{datetime.now().timestamp()}" 
-        files = get_built_space_files() # Placeholder - you'll need to define this function
-
-        # Create the Space
-        create_space(self.hf_api, repository_name, "Description", True, files) 
-
-        st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
-        st.markdown(f"[Check out your new Space here](https://huggingface.co/spaces/{repository_name})")
+examples=[["I'm planning a vacation to Japan. Can you suggest a one-week itinerary including must-visit places and local cuisines to try?", None, None, None, None, None, ],
+          ["Can you write a short story about a time-traveling detective who solves historical mysteries?", None, None, None, None, None,],
+          ["I'm trying to learn French. Can you provide some common phrases that would be useful for a beginner, along with their pronunciations?", None, None, None, None, None,],
+          ["I have chicken, rice, and bell peppers in my kitchen. Can you suggest an easy recipe I can make with these ingredients?", None, None, None, None, None,],
+          ["Can you explain how the QuickSort algorithm works and provide a Python implementation?", None, None, None, None, None,],
+          ["What are some unique features of Rust that make it stand out compared to other systems programming languages like C++?", None, None, None, None, None,],
+         ]
 
 
-# Add any missing functions from your original code (e.g., get_built_space_files)
-def get_built_space_files():
-    # Replace with your logic to gather the files you want to deploy
-    return {
-        "app.py": "# Your Streamlit app code here",
-        "requirements.txt": "streamlit\ntransformers" 
-        # Add other files as needed
-    }
-
-# ... (Rest of your existing functions: save_agent_to_file, load_agent_prompt, 
-# create_agent_from_text, chat_interface_with_agent, terminal_interface, 
-# code_editor_interface, summarize_text, sentiment_analysis, translate_code, 
-# generate_code, chat_interface, workspace_interface, add_code_to_workspace) 
-
-def create_space(api, name, description, public, files, entrypoint="launch.py"):
-    url = f"{hf_hub_url()}spaces/{name}/prepare-repo"
-    headers = {"Authorization": f"Bearer {api.access_token}"}
-    payload = {
-        "public": public,
-        "gitignore_template": "web",
-        "default_branch": "main",
-        "archived": False,
-        "files": []
-    }
-    for filename, contents in files.items():
-        data = {
-            "content": contents,
-            "path": filename,
-            "encoding": "utf-8",
-            "mode": "overwrite" if "#\{random.randint(0, 1)\}" not in contents else "merge",
-        }
-        payload["files"].append(data)
-    response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status()
-    location = response.headers.get("Location")
-    # wait_for_processing(location, api)  # You might need to implement this if it's not already defined
-
-    return Repository(name=name, api=api)
-
-# Streamlit App
-st.title("AI Agent Creator")
-
-# Sidebar navigation
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
-
-# ... (Rest of your Streamlit app logic, including the 'Automate' button callback)
-
-if app_mode == "AI Agent Creator":
-    # AI Agent Creator
-    st.header("Create an AI Agent from Text")
-
-    st.subheader("From Text")
-    agent_name = st.text_input("Enter agent name:")
-    text_input = st.text_area("Enter skills (one per line):")
-    if st.button("Create Agent"):
-        agent_prompt = create_agent_from_text(agent_name, text_input)
-        st.success(f"Agent '{agent_name}' created and saved successfully.")
-        st.session_state.available_agents.append(agent_name)
-
-# ... (Rest of your Streamlit app logic for other app modes)
-
-# Using the modified and extended class and functions, update the callback for the 'Automate' button in the Streamlit UI:
-if st.button("Automate", args=(hf_token,)):
-    agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-    summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name, selected_model, hf_token)
-    st.write("Autonomous Build Summary:")
-    st.write(summary)
-    st.write("Next Step:")
-    st.write(next_step)
-
-    # If everything went well, proceed to deploy the Space
-    if agent._hf_api and agent.has_valid_hf_token():
-        agent.deploy_built_space_to_hf() 
+gr.ChatInterface(
+    fn=run,
+    chatbot=gr.Chatbot(show_label=False, show_share_button=False, show_copy_button=True, likeable=True, layout="panel"),
+    title="Mixtral 46.7B\nMicro-Agent\nInternet Search",
+    examples=examples,
+    concurrency_limit=20,
+).launch(show_api=False)
