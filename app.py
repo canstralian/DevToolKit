@@ -44,7 +44,10 @@ def format_prompt(message, history):
   return prompt
 
 
-
+def _parse_text_generation_error(error: Optional[str], error_type: Optional[str]) -> TextGenerationError:
+    if error_type == "overloaded":
+        return OverloadedError(error)  # type: ignore
+        
 def run_gpt(
     prompt_template,
     stop_tokens,
