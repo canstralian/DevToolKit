@@ -1,11 +1,16 @@
-import subprocess
 import streamlit as st
+import os
+import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 from pylint import lint
 from io import StringIO
+import openai
+import sys
 
-HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
+# Set your OpenAI API key here
+openai.api_key = "YOUR_OPENAI_API_KEY"
+
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
 
@@ -18,11 +23,6 @@ if 'workspace_projects' not in st.session_state:
     st.session_state.workspace_projects = {}
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
-if 'current_state' not in st.session_state:
-    st.session_state.current_state = {
-        'toolbox': {},
-        'workspace_chat': {}
-    }
 
 class AIAgent:
     def __init__(self, name, description, skills):
@@ -44,26 +44,23 @@ I am confident that I can leverage my expertise to assist you in developing and 
         """
         Autonomous build logic that continues based on the state of chat history and workspace projects.
         """
+        # Example logic: Generate a summary of chat history and workspace state
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
+        # Example: Generate the next logical step in the project
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
         return summary, next_step
 
 def save_agent_to_file(agent):
-    """Saves the agent's prompt to a file locally and then commits to the Hugging Face repository."""
+    """Saves the agent's prompt to a file."""
     if not os.path.exists(AGENT_DIRECTORY):
         os.makedirs(AGENT_DIRECTORY)
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
-    config_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}Config.txt")
     with open(file_path, "w") as file:
         file.write(agent.create_agent_prompt())
-    with open(config_path, "w") as file:
-        file.write(f"Agent Name: {agent.name}\nDescription: {agent.description}")
     st.session_state.available_agents.append(agent.name)
-
-    commit_and_push_changes(f"Add agent {agent.name}")
 
 def load_agent_prompt(agent_name):
     """Loads an agent prompt from a file."""
@@ -107,135 +104,84 @@ def chat_interface_with_agent(input_text, agent_name):
 
     # Generate chatbot response
     outputs = model.generate(
-        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True, pad_token_id=tokenizer.eos_token_id # Set pad_token_id to eos_token_id
+        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
 
-def workspace_interface(project_name):
-    project_path = os.path.join(PROJECT_ROOT, project_name)
-    if not os.path.exists(PROJECT_ROOT):
-        os.makedirs(PROJECT_ROOT)
-    if not os.path.exists(project_path):
-        os.makedirs(project_path)
-        st.session_state.workspace_projects[project_name] = {"files": []}
-        st.session_state.current_state['workspace_chat']['project_name'] = project_name
-        commit_and_push_changes(f"Create project {project_name}")
-        return f"Project {project_name} created successfully."
-    else:
-        return f"Project {project_name} already exists."
-
-def add_code_to_workspace(project_name, code, file_name):
-    project_path = os.path.join(PROJECT_ROOT, project_name)
-    if os.path.exists(project_path):
-        file_path = os.path.join(project_path, file_name)
-        with open(file_path, "w") as file:
-            file.write(code)
-        st.session_state.workspace_projects[project_name]["files"].append(file_name)
-        st.session_state.current_state['workspace_chat']['added_code'] = {"file_name": file_name, "code": code}
-        commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
-        return f"Code added to {file_name} in project {project_name} successfully."
-    else:
-        return f"Project {project_name} does not exist."
-
+# Terminal interface
 def terminal_interface(command, project_name=None):
     if project_name:
         project_path = os.path.join(PROJECT_ROOT, project_name)
-        if not os.path.exists(project_path):
-            return f"Project {project_name} does not exist."
-        result = subprocess.run(command, cwd=project_path, shell=True, capture_output=True, text=True)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=project_path)
     else:
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        st.session_state.current_state['toolbox']['terminal_output'] = result.stdout
-        return result.stdout
-    else:
-        st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
-        return result.stderr
+    return result.stdout
 
-# Chat interface using a selected agent
-def chat_interface_with_agent(input_text, agent_name):
-    # ... [rest of the chat_interface_with_agent function] ...
+# Code editor interface
+def code_editor_interface(code):
+    formatted_code = black.format_str(code, mode=black.FileMode())
+    pylint_output = lint.Run([formatted_code], do_exit=False)
+    pylint_output_str = StringIO()
+    pylint_output.linter.reporter.write_messages(pylint_output_str)
+    return formatted_code, pylint_output_str.getvalue()
 
-
+# Text summarization tool
 def summarize_text(text):
     summarizer = pipeline("summarization")
-    summary = summarizer(text, max_length=50, min_length=25, do_sample=False)
-    st.session_state.current_state['toolbox']['summary'] = summary[0]['summary_text']
+    summary = summarizer(text, max_length=130, min_length=30, do_sample=False)
     return summary[0]['summary_text']
 
+# Sentiment analysis tool
 def sentiment_analysis(text):
     analyzer = pipeline("sentiment-analysis")
-    sentiment = analyzer(text)
-    st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
-    return sentiment[0]
+    result = analyzer(text)
+    return result[0]['label']
 
-# ... [rest of the translate_code function, but remove the OpenAI API call and replace it with your own logic] ...
+# Text translation tool (code translation)
+def translate_code(code, source_language, target_language):
+    # Placeholder for translation logic
+    return f"Translated {source_language} code to {target_language}."
 
-def generate_code(code_idea):
-    # Replace this with a call to a Hugging Face model or your own logic
-    # For example, using a text-generation pipeline:
-    generator = pipeline('text-generation', model='gpt2')
-    generated_code = generator(code_idea, max_length=100, num_return_sequences=1)[0]['generated_text']
-    st.session_state.current_state['toolbox']['generated_code'] = generated_code
-    return generated_code
+# Code generation tool
+def generate_code(idea):
+    response = openai.Completion.create(
+        engine="davinci-codex",
+        prompt=idea,
+        max_tokens=150
+    )
+    return response.choices[0].text.strip()
+
+# Workspace interface
+def workspace_interface(project_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if not os.path.exists(project_path):
+        os.makedirs(project_path)
+        st.session_state.workspace_projects[project_name] = {'files': []}
+        return f"Project '{project_name}' created successfully."
+    else:
+        return f"Project '{project_name}' already exists."
+
+# Add code to workspace
+def add_code_to_workspace(project_name, code, file_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if not os.path.exists(project_path):
+        return f"Project '{project_name}' does not exist."
     
-def translate_code(code, input_language, output_language):
-    # Define a dictionary to map programming languages to their corresponding file extensions
-    language_extensions = {
-        
-    }
+    file_path = os.path.join(project_path, file_name)
+    with open(file_path, "w") as file:
+        file.write(code)
+    st.session_state.workspace_projects[project_name]['files'].append(file_name)
+    return f"Code added to '{file_name}' in project '{project_name}'."
 
-    # Add code to handle edge cases such as invalid input and unsupported programming languages
-    if input_language not in language_extensions:
-        raise ValueError(f"Invalid input language: {input_language}")
-    if output_language not in language_extensions:
-        raise ValueError(f"Invalid output language: {output_language}")
-
-    # Use the dictionary to map the input and output languages to their corresponding file extensions
-    input_extension = language_extensions[input_language]
-    output_extension = language_extensions[output_language]
-
-    # Translate the code using the OpenAI API
-    prompt = f"Translate this code from {input_language} to {output_language}:\n\n{code}"
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are an expert software developer."},
-            {"role": "user", "content": prompt}
-        ]
+# Chat interface
+def chat_interface(input_text):
+    response = openai.Completion.create(
+        engine="davinci-codex",
+        prompt=input_text,
+        max_tokens=150
     )
-    translated_code = response.choices[0].message['content'].strip()
-
-    # Return the translated code
-    translated_code = response.choices[0].message['content'].strip()
-    st.session_state.current_state['toolbox']['translated_code'] = translated_code
-    return translated_code
-
-def generate_code(code_idea):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are an expert software developer."},
-            {"role": "user", "content": f"Generate a Python code snippet for the following idea:\n\n{code_idea}"}
-        ]
-    )
-    generated_code = response.choices[0].message['content'].strip()
-    st.session_state.current_state['toolbox']['generated_code'] = generated_code
-    return generated_code
-
-def commit_and_push_changes(commit_message):
-    """Commits and pushes changes to the Hugging Face repository."""
-    commands = [
-        "git add .",
-        f"git commit -m '{commit_message}'",
-        "git push"
-    ]
-    for command in commands:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            st.error(f"Error executing command '{command}': {result.stderr}")
-            break
+    return response.choices[0].text.strip()
 
 # Streamlit App
 st.title("AI Agent Creator")
@@ -264,12 +210,7 @@ elif app_mode == "Tool Box":
     st.subheader("Chat with CodeCraft")
     chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
-        if chat_input.startswith("@"):
-            agent_name = chat_input.split(" ")[0][1:]  # Extract agent_name from @agent_name
-            chat_input = " ".join(chat_input.split(" ")[1:])  # Remove agent_name from input
-            chat_response = chat_interface_with_agent(chat_input, agent_name)
-        else:
-            chat_response = chat_interface(chat_input)
+        chat_response = chat_interface(chat_input)
         st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
 
@@ -306,8 +247,8 @@ elif app_mode == "Tool Box":
     # Text Translation Tool (Code Translation)
     st.subheader("Translate Code")
     code_to_translate = st.text_area("Enter code to translate:")
-    source_language = st.text_input("Enter source language (e.g. 'Python'):")
-    target_language = st.text_input("Enter target language (e.g. 'JavaScript'):")
+    source_language = st.text_input("Enter source language (e.g., 'Python'):")
+    target_language = st.text_input("Enter target language (e.g., 'JavaScript'):")
     if st.button("Translate Code"):
         translated_code = translate_code(code_to_translate, source_language, target_language)
         st.code(translated_code, language=target_language.lower())
@@ -318,20 +259,6 @@ elif app_mode == "Tool Box":
     if st.button("Generate Code"):
         generated_code = generate_code(code_idea)
         st.code(generated_code, language="python")
-
-    # Display Preset Commands
-    st.subheader("Preset Commands")
-    preset_commands = {
-        "Create a new project": "create_project('project_name')",
-        "Add code to workspace": "add_code_to_workspace('project_name', 'code', 'file_name')",
-        "Run terminal command": "terminal_interface('command', 'project_name')",
-        "Generate code": "generate_code('code_idea')",
-        "Summarize text": "summarize_text('text')",
-        "Analyze sentiment": "sentiment_analysis('text')",
-        "Translate code": "translate_code('code', 'source_language', 'target_language')",
-    }
-    for command_name, command in preset_commands.items():
-        st.write(f"{command_name}: `{command}`")
 
 elif app_mode == "Workspace Chat App":
     # Workspace Chat App
@@ -347,7 +274,7 @@ elif app_mode == "Workspace Chat App":
     # Add Code to Workspace
     st.subheader("Add Code to Workspace")
     code_to_add = st.text_area("Enter code to add to workspace:")
-    file_name = st.text_input("Enter file name (e.g. 'app.py'):")
+    file_name = st.text_input("Enter file name (e.g., 'app.py'):")
     if st.button("Add Code"):
         add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
         st.success(add_code_status)
@@ -404,7 +331,3 @@ elif app_mode == "Workspace Chat App":
         st.write(summary)
         st.write("Next Step:")
         st.write(next_step)
-
-# Display current state for debugging
-st.sidebar.subheader("Current State")
-st.sidebar.json(st.session_state.current_state)
