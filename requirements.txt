@@ -20,6 +20,6 @@ GitPython
 PyYAML==6.0.1
 pytest
 faiss-cpu
-huggingface_hub
+huggingface-hub
 rich-rst
 streamlit-ace
