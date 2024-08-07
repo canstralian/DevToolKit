@@ -256,8 +256,8 @@ elif app_mode == "Workspace Chat App":
             st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
     if __name__ == "__main__":
-    st.sidebar.title("Navigation")
-    app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+        st.sidebar.title("Navigation")
+        app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
     if app_mode == "AI Agent Creator":
         # AI Agent Creator
