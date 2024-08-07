@@ -42,7 +42,7 @@ AVAILABLE_CODE_GENERATIVE_MODELS = [
 ]
 
 # Load pre-trained RAG retriever
-rag_retriever = RagRetriever.from_pretrained("facebook/rag-token-base")  # Use a Hugging Face RAG model
+rag_retriever = RagRetriever.from_pretrained("facebook/rag-sequence-base")  # Use a Hugging Face RAG model
 
 # Load pre-trained chat model
 chat_model = AutoModelForSeq2SeqLM.from_pretrained("microsoft/DialoGPT-medium")  # Use a Hugging Face chat model
