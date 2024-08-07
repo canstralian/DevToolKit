@@ -1,10 +1,11 @@
 import streamlit as st
 import os
 import subprocess
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, HfApi
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from huggingface_hub import HfApi
 
 # Set your Hugging Face API key here
-hf_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
+huggingface_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
 
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
