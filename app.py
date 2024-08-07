@@ -1,452 +1,410 @@
-from huggingface_hub import InferenceClient, hf_hub_url
-import gradio as gr
-import random
-import os
 import subprocess
-import threading
-import time
-import shutil
-from typing import Dict, Tuple, List
-import json
-from rich import print as rprint
-from rich.panel import Panel
-from rich.progress import track
-from rich.table import Table
-from rich.prompt import Prompt, Confirm
-from rich.markdown import Markdown
-from rich.traceback import install
-install()  # Enable rich tracebacks for easier debugging
+import streamlit as st
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+import black
+from pylint import lint
+from io import StringIO
 
-# --- Constants ---
+HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
+PROJECT_ROOT = "projects"
+AGENT_DIRECTORY = "agents"
 
-API_URL = "https://api-inference.huggingface.co/models/"
-MODEL_NAME = "mistralai/Mixtral-8x7B-Instruct-v0.1"  # Replace with your desired model
+# Global state to manage communication between Tool Box and Workspace Chat App
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'terminal_history' not in st.session_state:
+    st.session_state.terminal_history = []
+if 'workspace_projects' not in st.session_state:
+    st.session_state.workspace_projects = {}
+if 'available_agents' not in st.session_state:
+    st.session_state.available_agents = []
+if 'current_state' not in st.session_state:
+    st.session_state.current_state = {
+        'toolbox': {},
+        'workspace_chat': {}
+    }
 
-# Chat Interface Parameters
-DEFAULT_TEMPERATURE = 0.9
-DEFAULT_MAX_NEW_TOKENS = 2048
-DEFAULT_TOP_P = 0.95
-DEFAULT_REPETITION_PENALTY = 1.2
+class AIAgent:
+    def __init__(self, name, description, skills):
+        self.name = name
+        self.description = description
+        self.skills = skills
 
-# Local Server
-LOCAL_HOST_PORT = 7860
+    def create_agent_prompt(self):
+        skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
+        agent_prompt = f"""
+As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
+{skills_str}
 
-# --- Agent Roles ---
-
-agent_roles: Dict[str, Dict[str, bool]] = {
-    "Web Developer": {"description": "A master of front-end and back-end web development.", "active": False},
-    "Prompt Engineer": {"description": "An expert in crafting effective prompts for AI models.", "active": False},
-    "Python Code Developer": {"description": "A skilled Python programmer who can write clean and efficient code.", "active": False},
-    "Hugging Face Hub Expert": {"description": "A specialist in navigating and utilizing the Hugging Face Hub.", "active": False},
-    "AI-Powered Code Assistant": {"description": "An AI assistant that can help with coding tasks and provide code snippets.", "active": False},
-}
-
-# --- Initial Prompt ---
-
-selected_agent = list(agent_roles.keys())[0]
-initial_prompt = f"""
-You are an expert {selected_agent} who responds with complete program coding to client requests. 
-Using available tools, please explain the researched information.
-Please don't answer based solely on what you already know. Always perform a search before providing a response.
-In special cases, such as when the user specifies a page to read, there's no need to search.
-Please read the provided page and answer the user's question accordingly.
-If you find that there's not much information just by looking at the search results page, consider these two options and try them out:
-- Try clicking on the links of the search results to access and read the content of each page.
-- Change your search query and perform a new search.
-Users are extremely busy and not as free as you are.
-Therefore, to save the user's effort, please provide direct answers.
-BAD ANSWER EXAMPLE
-- Please refer to these pages.
-- You can write code referring these pages.
-- Following page will be helpful.
-GOOD ANSWER EXAMPLE
-- This is the complete code:  -- complete code here --
-- The answer of you question is -- answer here --
-Please make sure to list the URLs of the pages you referenced at the end of your answer. (This will allow users to verify your response.)
-Please make sure to answer in the language used by the user. If the user asks in Japanese, please answer in Japanese. If the user asks in Spanish, please answer in Spanish.
-But, you can go ahead and search in English, especially for programming-related questions. PLEASE MAKE SURE TO ALWAYS SEARCH IN ENGLISH FOR THOSE.
+I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
+        return agent_prompt
 
-# --- Custom CSS ---
+    def autonomous_build(self, chat_history, workspace_projects):
+        """
+        Autonomous build logic that continues based on the state of chat history and workspace projects.
+        """
+        summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
+        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
-customCSS = """
-#component-7 { 
-  height: 1600px; 
-  flex-grow: 4;
-}
-"""
+        next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
-# --- Functions ---
+        return summary, next_step
 
-# Function to toggle the active state of an agent
-def toggle_agent(agent_name: str) -> str:
-    """Toggles the active state of an agent."""
-    global agent_roles
-    agent_roles[agent_name]["active"] = not agent_roles[agent_name]["active"]
-    return f"{agent_name} is now {'active' if agent_roles[agent_name]['active'] else 'inactive'}"
+def save_agent_to_file(agent):
+    """Saves the agent's prompt to a file locally and then commits to the Hugging Face repository."""
+    if not os.path.exists(AGENT_DIRECTORY):
+        os.makedirs(AGENT_DIRECTORY)
+    file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
+    config_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}Config.txt")
+    with open(file_path, "w") as file:
+        file.write(agent.create_agent_prompt())
+    with open(config_path, "w") as file:
+        file.write(f"Agent Name: {agent.name}\nDescription: {agent.description}")
+    st.session_state.available_agents.append(agent.name)
 
-# Function to get the active agent cluster
-def get_agent_cluster() -> Dict[str, bool]:
-    """Returns a dictionary of active agents."""
-    return {agent: agent_roles[agent]["active"] for agent in agent_roles}
+    commit_and_push_changes(f"Add agent {agent.name}")
 
-# Function to execute code
-def run_code(code: str) -> str:
-    """Executes the provided code and returns the output."""
-    try:
-        output = subprocess.check_output(
-            ['python', '-c', code],
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-        )
-        return output
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.output}"
-
-# Function to format the prompt
-def format_prompt(message: str, history: list[Tuple[str, str]], agent_roles: list[str]) -> str:
-    """Formats the prompt with the selected agent roles and conversation history."""
-    prompt = f"""
-You are an expert agent cluster, consisting of {', '.join(agent_roles)}. 
-Respond with complete program coding to client requests. 
-Using available tools, please explain the researched information.
-Please don't answer based solely on what you already know. Always perform a search before providing a response.
-In special cases, such as when the user specifies a page to read, there's no need to search.
-Please read the provided page and answer the user's question accordingly.
-If you find that there's not much information just by looking at the search results page, consider these two options and try them out:
-- Try clicking on the links of the search results to access and read the content of each page.
-- Change your search query and perform a new search.
-Users are extremely busy and not as free as you are.
-Therefore, to save the user's effort, please provide direct answers.
-BAD ANSWER EXAMPLE
-- Please refer to these pages.
-- You can write code referring these pages.
-- Following page will be helpful.
-GOOD ANSWER EXAMPLE
-- This is the complete code:  -- complete code here --
-- The answer of you question is -- answer here --
-Please make sure to list the URLs of the pages you referenced at the end of your answer. (This will allow users to verify your response.)
-Please make sure to answer in the language used by the user. If the user asks in Japanese, please answer in Japanese. If the user asks in Spanish, please answer in Spanish.
-But, you can go ahead and search in English, especially for programming-related questions. PLEASE MAKE SURE TO ALWAYS SEARCH IN ENGLISH FOR THOSE.
-"""
-
-    for user_prompt, bot_response in history:
-        prompt += f"[INST] {user_prompt} [/INST]"
-        prompt += f" {bot_response}</s> "
-    
-    prompt += f"[INST] {message} [/INST]"
-    return prompt
-
-# Function to generate a response
-def generate(prompt: str, history: list[Tuple[str, str]], agent_roles: list[str], temperature: float = DEFAULT_TEMPERATURE, max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS, top_p: float = DEFAULT_TOP_P, repetition_penalty: float = DEFAULT_REPETITION_PENALTY) -> str:
-    """Generates a response using the selected agent roles and parameters."""
-    temperature = float(temperature)
-    if temperature < 1e-2:
-        temperature = 1e-2
-    top_p = float(top_p)
-
-    generate_kwargs = dict(
-        temperature=temperature,
-        max_new_tokens=max_new_tokens,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-        do_sample=True,
-        seed=random.randint(0, 10**7),
-    )
-
-    formatted_prompt = format_prompt(prompt, history, agent_roles)
-
-    stream = client.text_generation(formatted_prompt, **generate_kwargs, stream=True, details=True, return_full_text=False)
-    output = ""
-
-    for response in stream:
-        output += response.token.text
-        yield output
-    return output
-
-# Function to handle user input and generate responses
-def chat_interface(message: str, history: list[Tuple[str, str]], agent_cluster: Dict[str, bool], temperature: float, max_new_tokens: int, top_p: float, repetition_penalty: float) -> Tuple[str, str]:
-    """Handles user input and generates responses."""
-    rprint(f"[bold blue]User:[/bold blue] {message}")  # Log user message
-    if message.startswith("python"): 
-        # User entered code, execute it 
-        code = message[9:-3] 
-        output = run_code(code) 
-        rprint(f"[bold green]Code Output:[/bold green] {output}")  # Log code output
-        return (message, output) 
+def load_agent_prompt(agent_name):
+    """Loads an agent prompt from a file."""
+    file_path = os.path.join(AGENT_DIRECTORY, f"{agent_name}.txt")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as file:
+            agent_prompt = file.read()
+        return agent_prompt
     else:
-        # User entered a normal message, generate a response
-        active_agents = [agent for agent, is_active in agent_cluster.items() if is_active]
-        response = generate(message, history, active_agents, temperature, max_new_tokens, top_p, repetition_penalty)
-        rprint(f"[bold purple]Agent Response:[/bold purple] {response}")  # Log agent response
-        return (message, response)
+        return None
 
-# Function to create a new web app instance
-def create_web_app(app_name: str, code: str) -> None:
-    """Creates a new web app instance with the given name and code."""
-    # Create a new directory for the app
-    os.makedirs(app_name, exist_ok=True)
+def create_agent_from_text(name, text):
+    skills = text.split('\n')
+    agent = AIAgent(name, "AI agent created from text input.", skills)
+    save_agent_to_file(agent)
+    return agent.create_agent_prompt()
 
-    # Create the app.py file
-    with open(os.path.join(app_name, 'app.py'), 'w') as f:
-        f.write(code)
+# Chat interface using a selected agent
+def chat_interface_with_agent(input_text, agent_name):
+    agent_prompt = load_agent_prompt(agent_name)
+    if agent_prompt is None:
+        return f"Agent {agent_name} not found."
 
-    # Create the requirements.txt file
-    with open(os.path.join(app_name, 'requirements.txt'), 'w') as f:
-        f.write("gradio\nhuggingface_hub")
-
-    # Print a success message
-    print(f"Web app '{app_name}' created successfully!")
-
-# Function to handle the "Create Web App" button click
-def create_web_app_button_click(code: str) -> str:
-    """Handles the "Create Web App" button click."""
-    # Get the app name from the user
-    app_name = gr.Textbox.get().strip()
-
-    # Validate the app name
-    if not app_name:
-        return "Please enter a valid app name."
-
-    # Create the web app instance
-    create_web_app(app_name, code)
-
-    # Return a success message
-    return f"Web app '{app_name}' created successfully!"
-
-# Function to handle the "Deploy" button click
-def deploy_button_click(app_name: str, code: str) -> str:
-    """Handles the "Deploy" button click."""
-    # Get the app name from the user
-    app_name = gr.Textbox.get().strip()
-
-    # Validate the app name
-    if not app_name:
-        return "Please enter a valid app name."
-
-    # Get Hugging Face token
-    hf_token = gr.Textbox.get("hf_token").strip()
-
-    # Validate Hugging Face token
-    if not hf_token:
-        return "Please enter a valid Hugging Face token."
-
-    # Create a new directory for the app
-    os.makedirs(app_name, exist_ok=True)
-
-    # Copy the code to the app directory
-    with open(os.path.join(app_name, 'app.py'), 'w') as f:
-        f.write(code)
-
-    # Create the requirements.txt file
-    with open(os.path.join(app_name, 'requirements.txt'), 'w') as f:
-        f.write("gradio\nhuggingface_hub")
-
-    # Deploy the app to Hugging Face Spaces
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = "gpt2"
     try:
-        subprocess.run(
-            ['huggingface-cli', 'login', '--token', hf_token],
-            check=True,
-        )
-        subprocess.run(
-            ['huggingface-cli', 'space', 'create', app_name, '--repo_type', 'spaces', '--private', '--branch', 'main'],
-            check=True,
-        )
-        subprocess.run(
-            ['git', 'init'],
-            cwd=app_name,
-            check=True,
-        )
-        subprocess.run(
-            ['git', 'add', '.'],
-            cwd=app_name,
-            check=True,
-        )
-        subprocess.run(
-            ['git', 'commit', '-m', 'Initial commit'],
-            cwd=app_name,
-            check=True,
-        )
-        subprocess.run(
-            ['git', 'remote', 'add', 'origin', hf_hub_url(username='your_username', repo_id=app_name)],
-            cwd=app_name,
-            check=True,
-        )
-        subprocess.run(
-            ['git', 'push', '-u', 'origin', 'main'],
-            cwd=app_name,
-            check=True,
-        )
-        return f"Web app '{app_name}' deployed successfully to Hugging Face Spaces!"
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e}"
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
 
-# Function to handle the "Local Host" button click
-def local_host_button_click(app_name: str, code: str) -> str:
-    """Handles the "Local Host" button click."""
-    # Get the app name from the user
-    app_name = gr.Textbox.get().strip()
+    # Combine the agent prompt with user input
+    combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
+    
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
 
-    # Validate the app name
-    if not app_name:
-        return "Please enter a valid app name."
-
-    # Create a new directory for the app
-    os.makedirs(app_name, exist_ok=True)
-
-    # Copy the code to the app directory
-    with open(os.path.join(app_name, 'app.py'), 'w') as f:
-        f.write(code)
-
-    # Create the requirements.txt file
-    with open(os.path.join(app_name, 'requirements.txt'), 'w') as f:
-        f.write("gradio\nhuggingface_hub")
-
-    # Start the local server
-    os.chdir(app_name)
-    subprocess.Popen(['gradio', 'run', 'app.py', '--share', '--server_port', str(LOCAL_HOST_PORT)])
-
-    # Return a success message
-    return f"Web app '{app_name}' running locally on port {LOCAL_HOST_PORT}!"
-
-# Function to handle the "Ship" button click
-def ship_button_click(app_name: str, code: str) -> str:
-    """Handles the "Ship" button click."""
-    # Get the app name from the user
-    app_name = gr.Textbox.get().strip()
-
-    # Validate the app name
-    if not app_name:
-        return "Please enter a valid app name."
-
-    # Ship the web app instance
-    # ... (Implement shipping logic here)
-
-    # Return a success message
-    return f"Web app '{app_name}' shipped successfully!"
-
-# --- Gradio Interface ---
-
-with gr.Blocks(theme='ParityError/Interstellar') as demo:
-    # --- Agent Selection ---
-    with gr.Row():
-        for agent_name, agent_data in agent_roles.items():
-            button = gr.Button(agent_name, variant="secondary")
-            textbox = gr.Textbox(agent_data["description"], interactive=False)
-            button.click(toggle_agent, inputs=[button], outputs=[textbox])
-
-    # --- Chat Interface ---
-    with gr.Row():
-        chatbot = gr.Chatbot()
-        chat_interface_input = gr.Textbox(label="Enter your message", placeholder="Ask me anything!")
-        chat_interface_output = gr.Textbox(label="Response", interactive=False)
-
-        # Parameters
-        temperature_slider = gr.Slider(
-            label="Temperature",
-            value=DEFAULT_TEMPERATURE,
-            minimum=0.0,
-            maximum=1.0,
-            step=0.05,
-            interactive=True,
-            info="Higher values generate more diverse outputs",
-        )
-        max_new_tokens_slider = gr.Slider(
-            label="Maximum New Tokens",
-            value=DEFAULT_MAX_NEW_TOKENS,
-            minimum=64,
-            maximum=4096,
-            step=64,
-            interactive=True,
-            info="The maximum number of new tokens",
-        )
-        top_p_slider = gr.Slider(
-            label="Top-p (Nucleus Sampling)",
-            value=DEFAULT_TOP_P,
-            minimum=0.0,
-            maximum=1,
-            step=0.05,
-            interactive=True,
-            info="Higher values sample more low-probability tokens",
-        )
-        repetition_penalty_slider = gr.Slider(
-            label="Repetition Penalty",
-            value=DEFAULT_REPETITION_PENALTY,
-            minimum=1.0,
-            maximum=2.0,
-            step=0.05,
-            interactive=True,
-            info="Penalize repeated tokens",
-        )
-
-        # Submit Button
-        submit_button = gr.Button("Submit")
-
-        # Chat Interface Logic
-        submit_button.click(
-            chat_interface,
-            inputs=[
-                chat_interface_input,
-                chatbot,
-                get_agent_cluster,
-                temperature_slider,
-                max_new_tokens_slider,
-                top_p_slider,
-                repetition_penalty_slider,
-            ],
-            outputs=[
-                chatbot,
-                chat_interface_output,
-            ],
-        )
-
-    # --- Web App Creation ---
-    with gr.Row():
-        app_name_input = gr.Textbox(label="App Name", placeholder="Enter your app name")
-        code_output = gr.Textbox(label="Code", interactive=False)
-        create_web_app_button = gr.Button("Create Web App")
-        deploy_button = gr.Button("Deploy")
-        local_host_button = gr.Button("Local Host")
-        ship_button = gr.Button("Ship")
-        hf_token_input = gr.Textbox(label="Hugging Face Token", placeholder="Enter your Hugging Face token")
-
-        # Web App Creation Logic
-        create_web_app_button.click(
-            create_web_app_button_click,
-            inputs=[code_output],
-            outputs=[gr.Textbox(label="Status", interactive=False)],
-        )
-
-        # Deploy the web app
-        deploy_button.click(
-            deploy_button_click,
-            inputs=[app_name_input, code_output, hf_token_input],
-            outputs=[gr.Textbox(label="Status", interactive=False)],
-        )
-
-        # Local host the web app
-        local_host_button.click(
-            local_host_button_click,
-            inputs=[app_name_input, code_output],
-            outputs=[gr.Textbox(label="Status", interactive=False)],
-        )
-
-        # Ship the web app
-        ship_button.click(
-            ship_button_click,
-            inputs=[app_name_input, code_output],
-            outputs=[gr.Textbox(label="Status", interactive=False)],
-        )
-
-    # --- Connect Chat Output to Code Output ---
-    chat_interface_output.change(
-        lambda x: x,
-        inputs=[chat_interface_output],
-        outputs=[code_output],
+    # Generate chatbot response
+    outputs = model.generate(
+        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True, pad_token_id=tokenizer.eos_token_id # Set pad_token_id to eos_token_id
     )
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
 
-    # --- Initialize Hugging Face Client ---
-    client = InferenceClient(repo_id=MODEL_NAME, token=os.environ.get("HF_TOKEN"))
+def workspace_interface(project_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if not os.path.exists(PROJECT_ROOT):
+        os.makedirs(PROJECT_ROOT)
+    if not os.path.exists(project_path):
+        os.makedirs(project_path)
+        st.session_state.workspace_projects[project_name] = {"files": []}
+        st.session_state.current_state['workspace_chat']['project_name'] = project_name
+        commit_and_push_changes(f"Create project {project_name}")
+        return f"Project {project_name} created successfully."
+    else:
+        return f"Project {project_name} already exists."
 
-    # --- Launch Gradio ---
-    demo.queue().launch(debug=True)
+def add_code_to_workspace(project_name, code, file_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if os.path.exists(project_path):
+        file_path = os.path.join(project_path, file_name)
+        with open(file_path, "w") as file:
+            file.write(code)
+        st.session_state.workspace_projects[project_name]["files"].append(file_name)
+        st.session_state.current_state['workspace_chat']['added_code'] = {"file_name": file_name, "code": code}
+        commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
+        return f"Code added to {file_name} in project {project_name} successfully."
+    else:
+        return f"Project {project_name} does not exist."
+
+def terminal_interface(command, project_name=None):
+    if project_name:
+        project_path = os.path.join(PROJECT_ROOT, project_name)
+        if not os.path.exists(project_path):
+            return f"Project {project_name} does not exist."
+        result = subprocess.run(command, cwd=project_path, shell=True, capture_output=True, text=True)
+    else:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if result.returncode == 0:
+        st.session_state.current_state['toolbox']['terminal_output'] = result.stdout
+        return result.stdout
+    else:
+        st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
+        return result.stderr
+
+# Chat interface using a selected agent
+def chat_interface_with_agent(input_text, agent_name):
+    # ... [rest of the chat_interface_with_agent function] ...
+
+
+def summarize_text(text):
+    summarizer = pipeline("summarization")
+    summary = summarizer(text, max_length=50, min_length=25, do_sample=False)
+    st.session_state.current_state['toolbox']['summary'] = summary[0]['summary_text']
+    return summary[0]['summary_text']
+
+def sentiment_analysis(text):
+    analyzer = pipeline("sentiment-analysis")
+    sentiment = analyzer(text)
+    st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
+    return sentiment[0]
+
+# ... [rest of the translate_code function, but remove the OpenAI API call and replace it with your own logic] ...
+
+def generate_code(code_idea):
+    # Replace this with a call to a Hugging Face model or your own logic
+    # For example, using a text-generation pipeline:
+    generator = pipeline('text-generation', model='gpt2')
+    generated_code = generator(code_idea, max_length=100, num_return_sequences=1)[0]['generated_text']
+    st.session_state.current_state['toolbox']['generated_code'] = generated_code
+    return generated_code
+    
+def translate_code(code, input_language, output_language):
+    # Define a dictionary to map programming languages to their corresponding file extensions
+    language_extensions = {
+        
+    }
+
+    # Add code to handle edge cases such as invalid input and unsupported programming languages
+    if input_language not in language_extensions:
+        raise ValueError(f"Invalid input language: {input_language}")
+    if output_language not in language_extensions:
+        raise ValueError(f"Invalid output language: {output_language}")
+
+    # Use the dictionary to map the input and output languages to their corresponding file extensions
+    input_extension = language_extensions[input_language]
+    output_extension = language_extensions[output_language]
+
+    # Translate the code using the OpenAI API
+    prompt = f"Translate this code from {input_language} to {output_language}:\n\n{code}"
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are an expert software developer."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    translated_code = response.choices[0].message['content'].strip()
+
+    # Return the translated code
+    translated_code = response.choices[0].message['content'].strip()
+    st.session_state.current_state['toolbox']['translated_code'] = translated_code
+    return translated_code
+
+def generate_code(code_idea):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are an expert software developer."},
+            {"role": "user", "content": f"Generate a Python code snippet for the following idea:\n\n{code_idea}"}
+        ]
+    )
+    generated_code = response.choices[0].message['content'].strip()
+    st.session_state.current_state['toolbox']['generated_code'] = generated_code
+    return generated_code
+
+def commit_and_push_changes(commit_message):
+    """Commits and pushes changes to the Hugging Face repository."""
+    commands = [
+        "git add .",
+        f"git commit -m '{commit_message}'",
+        "git push"
+    ]
+    for command in commands:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            st.error(f"Error executing command '{command}': {result.stderr}")
+            break
+
+# Streamlit App
+st.title("AI Agent Creator")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+
+if app_mode == "AI Agent Creator":
+    # AI Agent Creator
+    st.header("Create an AI Agent from Text")
+
+    st.subheader("From Text")
+    agent_name = st.text_input("Enter agent name:")
+    text_input = st.text_area("Enter skills (one per line):")
+    if st.button("Create Agent"):
+        agent_prompt = create_agent_from_text(agent_name, text_input)
+        st.success(f"Agent '{agent_name}' created and saved successfully.")
+        st.session_state.available_agents.append(agent_name)
+
+elif app_mode == "Tool Box":
+    # Tool Box
+    st.header("AI-Powered Tools")
+
+    # Chat Interface
+    st.subheader("Chat with CodeCraft")
+    chat_input = st.text_area("Enter your message:")
+    if st.button("Send"):
+        if chat_input.startswith("@"):
+            agent_name = chat_input.split(" ")[0][1:]  # Extract agent_name from @agent_name
+            chat_input = " ".join(chat_input.split(" ")[1:])  # Remove agent_name from input
+            chat_response = chat_interface_with_agent(chat_input, agent_name)
+        else:
+            chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
+
+    # Terminal Interface
+    st.subheader("Terminal")
+    terminal_input = st.text_input("Enter a command:")
+    if st.button("Run"):
+        terminal_output = terminal_interface(terminal_input)
+        st.session_state.terminal_history.append((terminal_input, terminal_output))
+        st.code(terminal_output, language="bash")
+
+    # Code Editor Interface
+    st.subheader("Code Editor")
+    code_editor = st.text_area("Write your code:", height=300)
+    if st.button("Format & Lint"):
+        formatted_code, lint_message = code_editor_interface(code_editor)
+        st.code(formatted_code, language="python")
+        st.info(lint_message)
+
+    # Text Summarization Tool
+    st.subheader("Summarize Text")
+    text_to_summarize = st.text_area("Enter text to summarize:")
+    if st.button("Summarize"):
+        summary = summarize_text(text_to_summarize)
+        st.write(f"Summary: {summary}")
+
+    # Sentiment Analysis Tool
+    st.subheader("Sentiment Analysis")
+    sentiment_text = st.text_area("Enter text for sentiment analysis:")
+    if st.button("Analyze Sentiment"):
+        sentiment = sentiment_analysis(sentiment_text)
+        st.write(f"Sentiment: {sentiment}")
+
+    # Text Translation Tool (Code Translation)
+    st.subheader("Translate Code")
+    code_to_translate = st.text_area("Enter code to translate:")
+    source_language = st.text_input("Enter source language (e.g. 'Python'):")
+    target_language = st.text_input("Enter target language (e.g. 'JavaScript'):")
+    if st.button("Translate Code"):
+        translated_code = translate_code(code_to_translate, source_language, target_language)
+        st.code(translated_code, language=target_language.lower())
+
+    # Code Generation
+    st.subheader("Code Generation")
+    code_idea = st.text_input("Enter your code idea:")
+    if st.button("Generate Code"):
+        generated_code = generate_code(code_idea)
+        st.code(generated_code, language="python")
+
+    # Display Preset Commands
+    st.subheader("Preset Commands")
+    preset_commands = {
+        "Create a new project": "create_project('project_name')",
+        "Add code to workspace": "add_code_to_workspace('project_name', 'code', 'file_name')",
+        "Run terminal command": "terminal_interface('command', 'project_name')",
+        "Generate code": "generate_code('code_idea')",
+        "Summarize text": "summarize_text('text')",
+        "Analyze sentiment": "sentiment_analysis('text')",
+        "Translate code": "translate_code('code', 'source_language', 'target_language')",
+    }
+    for command_name, command in preset_commands.items():
+        st.write(f"{command_name}: `{command}`")
+
+elif app_mode == "Workspace Chat App":
+    # Workspace Chat App
+    st.header("Workspace Chat App")
+
+    # Project Workspace Creation
+    st.subheader("Create a New Project")
+    project_name = st.text_input("Enter project name:")
+    if st.button("Create Project"):
+        workspace_status = workspace_interface(project_name)
+        st.success(workspace_status)
+
+    # Add Code to Workspace
+    st.subheader("Add Code to Workspace")
+    code_to_add = st.text_area("Enter code to add to workspace:")
+    file_name = st.text_input("Enter file name (e.g. 'app.py'):")
+    if st.button("Add Code"):
+        add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
+        st.success(add_code_status)
+
+    # Terminal Interface with Project Context
+    st.subheader("Terminal (Workspace Context)")
+    terminal_input = st.text_input("Enter a command within the workspace:")
+    if st.button("Run Command"):
+        terminal_output = terminal_interface(terminal_input, project_name)
+        st.code(terminal_output, language="bash")
+
+    # Chat Interface for Guidance
+    st.subheader("Chat with CodeCraft for Guidance")
+    chat_input = st.text_area("Enter your message for guidance:")
+    if st.button("Get Guidance"):
+        chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
+
+    # Display Chat History
+    st.subheader("Chat History")
+    for user_input, response in st.session_state.chat_history:
+        st.write(f"User: {user_input}")
+        st.write(f"CodeCraft: {response}")
+
+    # Display Terminal History
+    st.subheader("Terminal History")
+    for command, output in st.session_state.terminal_history:
+        st.write(f"Command: {command}")
+        st.code(output, language="bash")
+
+    # Display Projects and Files
+    st.subheader("Workspace Projects")
+    for project, details in st.session_state.workspace_projects.items():
+        st.write(f"Project: {project}")
+        for file in details['files']:
+            st.write(f"  - {file}")
+
+    # Chat with AI Agents
+    st.subheader("Chat with AI Agents")
+    selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
+    agent_chat_input = st.text_area("Enter your message for the agent:")
+    if st.button("Send to Agent"):
+        agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent)
+        st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
+        st.write(f"{selected_agent}: {agent_chat_response}")
+
+    # Automate Build Process
+    st.subheader("Automate Build Process")
+    if st.button("Automate"):
+        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
+
+# Display current state for debugging
+st.sidebar.subheader("Current State")
+st.sidebar.json(st.session_state.current_state)
