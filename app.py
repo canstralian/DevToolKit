@@ -7,9 +7,9 @@ from huggingface_hub import HfApi
 
 
 try:
-    huggingface_json = st.secrets["huggingface"]
-    huggingface_data = json.loads(huggingface_json)
-    huggingface_token = huggingface_data["hf_token"]
+    huggingface_json = st.secrets["hf_token"]
+    huggingface_data = json.loads("huggingface_json")
+    huggingface_token = huggingface_data["huggingface_json"]
 except Exception as e:
     st.error(f"Unable to load secrets: {str(e)}")
     raise
