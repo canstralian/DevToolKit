@@ -3,20 +3,18 @@ import os
 import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
-
 import json
 
 try:
     huggingface_json = st.secrets["huggingface"]
+    huggingface_data = json.loads(huggingface_json)
+    huggingface_token = huggingface_data["hf_token"]
 except Exception as e:
-    print("Unable to load secrets: ", str(e))
+    st.error(f"Unable to load secrets: {str(e)}")
     raise
 
-huggingface_data = json.loads(huggingface_data)
-huggingface_token = huggingface_data["hf_token"]
-
-PROJECT_ROOT = "projects"
-AGENT_DIRECTORY = "agents"
+PROJECT_ROOT = "home/app/projects"
+AGENT_DIRECTORY = "home/app/agents"
 AVAILABLE_CODE_GENERATIVE_MODELS = ["bigcode/starcoder", "Salesforce/codegen-350M-mono", "microsoft/CodeGPT-small"]
 
 # Global state to manage communication between Tool Box and Workspace Chat App
