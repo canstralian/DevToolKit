@@ -12,7 +12,7 @@ except Exception as e:
     print("Unable to load secrets: ", str(e))
     raise
 
-huggingface_data = json.loads(huggingface_json)
+huggingface_data = json.loads(huggingface_data)
 huggingface_token = huggingface_data["hf_token"]
 
 PROJECT_ROOT = "projects"
