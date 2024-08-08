@@ -1,14 +1,3 @@
-
-import streamlit as st
-
-# Access Hugging Face API key from secrets
-hf_token = st.secrets["huggingface"]["hf_token"]
-if not hf_token:
-    st.error("Hugging Face API key not found. Please make sure it is set in the secrets.")
-Example Code Using Secrets
-Here is the updated code snippet using the secrets from secrets.toml:
-
-PYTHON
 import streamlit as st
 import os
 import subprocess
