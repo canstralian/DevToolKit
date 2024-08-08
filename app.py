@@ -5,7 +5,7 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
 
 # Set your Hugging Face API key here
-huggingface_token = "YOUR_HUGGING_FACE_API_KEY"  # Replace with your actual token
+huggingface_token = st.secrets["huggingface"]["hf_token"]
 
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
@@ -20,6 +20,9 @@ if 'workspace_projects' not in st.session_state:
     st.session_state.workspace_projects = {}
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
+
+# AI Guide Toggle
+ai_guide_level = st.sidebar.radio("AI Guide Level", ["Full Assistance", "Partial Assistance", "No Assistance"])
 
 class AIAgent:
     def __init__(self, name, description, skills):
@@ -38,20 +41,12 @@ I am confident that I can leverage my expertise to assist you in developing and 
         return agent_prompt
 
     def autonomous_build(self, chat_history, workspace_projects, project_name, selected_model, hf_token):
-        """
-        Autonomous build logic that continues based on the state of chat history and workspace projects.
-        """
-        # Example logic: Generate a summary of chat history and workspace state
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
-
-        # Example: Generate the next logical step in the project
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
-
         return summary, next_step
 
     def deploy_built_space_to_hf(self):
-        # Implement deployment logic here
         pass
 
 def process_input(input_text):
@@ -94,236 +89,209 @@ def display_workspace_projects(workspace_projects):
 
 if __name__ == "__main__":
     st.sidebar.title("Navigation")
-    app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+    app_mode = st.sidebar.selectbox("Choose the app mode", ["Home", "Terminal", "Explorer", "Code Editor", "Build & Deploy"])
 
-    if app_mode == "AI Agent Creator":
-        # AI Agent Creator
-        st.header("Create an AI Agent from Text")
+    if app_mode == "Home":
+        st.title("Welcome to AI-Guided Development")
+        st.write("This application helps you build and deploy applications with the assistance of an AI Guide.")
+        st.write("Toggle the AI Guide from the sidebar to choose the level of assistance you need.")
 
-        st.subheader("From Text")
-        agent_name = st.text_input("Enter agent name:")
-        text_input = st.text_area("Enter skills (one per line):")
-        if st.button("Create Agent"):
-            skills = text_input.split('\n')
-            agent = AIAgent(agent_name, "AI agent created from text input", skills)
-            st.success(f"Agent '{agent_name}' created and saved successfully.")
-            st.session_state.available_agents.append(agent_name)
-
-    elif app_mode == "Tool Box":
-        # Tool Box
-        st.header("AI-Powered Tools")
-
-        # Chat Interface
-        st.subheader("Chat with CodeCraft")
-        chat_input = st.text_area("Enter your message:")
-        if st.button("Send"):
-            response = process_input(chat_input)
-            st.session_state.chat_history.append((chat_input, response))
-            st.write(f"CodeCraft: {response}")
-
-        # Terminal Interface
-        st.subheader("Terminal")
+    elif app_mode == "Terminal":
+        st.header("Terminal")
         terminal_input = st.text_input("Enter a command:")
         if st.button("Run"):
             output = run_code(terminal_input)
             st.session_state.terminal_history.append((terminal_input, output))
             st.code(output, language="bash")
+        if ai_guide_level != "No Assistance":
+            st.write("Run commands here to add packages to your project. For example: `pip install <package-name>`.")
+            if terminal_input and "install" in terminal_input:
+                package_name = terminal_input.split("install")[-1].strip()
+                st.write(f"Package `{package_name}` will be added to your project.")
 
-        # Project Management
-        st.subheader("Project Management")
-        project_name_input = st.text_input("Enter Project Name:")
-        if st.button("Create Project"):
-            status = workspace_interface(project_name_input)
-            st.write(status)
+    elif app_mode == "Explorer":
+        st.header("Explorer")
+        uploaded_file = st.file_uploader("Upload a file", type=["py"])
+        if uploaded_file:
+            file_details = {"FileName": uploaded_file.name, "FileType": uploaded_file.type}
+            st.write(file_details)
+            save_path = os.path.join(PROJECT_ROOT, uploaded_file.name)
+            with open(save_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"File {uploaded_file.name} saved successfully!")
 
-        code_to_add = st.text_area("Enter Code to Add to Workspace:", height=150)
-        file_name_input = st.text_input("Enter File Name (e.g., 'app.py'):")
-        if st.button("Add Code"):
-            status = add_code_to_workspace(project_name_input, code_to_add, file_name_input)
-            st.write(status)
+        st.write("Drag and drop files into the 'app' folder.")
+        for project, details in st.session_state.workspace_projects.items():
+            st.write(f"Project: {project}")
+            for file in details['files']:
+                st.write(f"  - {file}")
+                if st.button(f"Move {file} to app folder"):
+                    # Logic to move file to 'app' folder
+                    pass
+        if ai_guide_level != "No Assistance":
+            st.write("You can upload files and move them into the 'app' folder for building your application.")
 
-        # Display Chat History
-        st.subheader("Chat History")
-        chat_history = display_chat_history(st.session_state.chat_history)
-        st.text_area("Chat History", value=chat_history, height=200)
+    elif app_mode == "Code Editor":
+        st.header("Code Editor")
+        code_editor = st.text_area("Write your code:", height=300)
+        if st.button("Save Code"):
+            # Logic to save code
+            pass
+        if ai_guide_level != "No Assistance":
+            st.write("The function `foo()` requires the `bar` package. Add it to `requirements.txt`.")
 
-        # Display Workspace Projects
-        st.subheader("Workspace Projects")
-        workspace_projects = display_workspace_projects(st.session_state.workspace_projects)
-        st.text_area("Workspace Projects", value=workspace_projects, height=200)
-
-    elif app_mode == "Workspace Chat App":
-        # Workspace Chat App
-        st.header("Workspace Chat App")
-
-        # Chat Interface with AI Agents
-        st.subheader("Chat with AI Agents")
-        selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
-        agent_chat_input = st.text_area("Enter your message for the agent:")
-        if st.button("Send to Agent"):
-            response = process_input(agent_chat_input)
-            st.session_state.chat_history.append((agent_chat_input, response))
-            st.write(f"{selected_agent}: {response}")
-
-        # Code Generation
-        st.subheader("Code Generation")
-        code_idea = st.text_input("Enter your code idea:")
-        selected_model = st.selectbox("Select a code-generative model", AVAILABLE_CODE_GENERATIVE_MODELS)
-        if st.button("Generate Code"):
-            generator = pipeline("text-generation", model=selected_model, tokenizer=selected_model)
-            generated_code = generator(code_idea, max_length=150, num_return_sequences=1)[0]['generated_text']
-            st.code(generated_code, language="python")
-
-        # Automate Build Process
-        st.subheader("Automate Build Process")
+    elif app_mode == "Build & Deploy":
+        st.header("Build & Deploy")
+        project_name_input = st.text_input("Enter Project Name for Automation:")
         if st.button("Automate"):
+            selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
+            selected_model = st.selectbox("Select a code-generative model", AVAILABLE_CODE_GENERATIVE_MODELS)
             agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-            summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name_input, selected_model, hf_token)
+            summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name_input, selected_model, huggingface_token)
             st.write("Autonomous Build Summary:")
             st.write(summary)
             st.write("Next Step:")
             st.write(next_step)
-
             if agent._hf_api and agent.has_valid_hf_token():
                 repository = agent.deploy_built_space_to_hf()
                 st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
                 st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
-# Launch the Streamlit app
-st.markdown("""
-<style>
-/* Advanced and Accommodating CSS */
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f4f4f9;
-    color: #333;
-    margin: 0;
-    padding: 0;
-}
+    # CSS for styling
+    st.markdown("""
+    <style>
+    /* Advanced and Accommodating CSS */
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f4f4f9;
+        color: #333;
+        margin: 0;
+        padding: 0;
+    }
 
-h1, h2, h3, h4, h5, h6 {
-    color: #333;
-}
+    h1, h2, h3, h4, h5, h6 {
+        color: #333;
+    }
 
-.container {
-    width: 90%;
-    margin: 0 auto;
-    padding: 20px;
-}
+    .container {
+        width: 90%;
+        margin: 0 auto;
+        padding: 20px;
+    }
 
-/* Navigation Sidebar */
-.sidebar {
-    background-color: #2c3e50;
-    color: #ecf0f1;
-    padding: 20px;
-    height: 100vh;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 250px;
-    overflow-y: auto;
-}
+    /* Navigation Sidebar */
+    .sidebar {
+        background-color: #2c3e50;
+        color: #ecf0f1;
+        padding: 20px;
+        height: 100vh;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 250px;
+        overflow-y: auto;
+    }
 
-.sidebar a {
-    color: #ecf0f1;
-    text-decoration: none;
-    display: block;
-    padding: 10px 0;
-}
+    .sidebar a {
+        color: #ecf0f1;
+        text-decoration: none;
+        display: block;
+        padding: 10px 0;
+    }
 
-.sidebar a:hover {
-    background-color: #34495e;
-    border-radius: 5px;
-}
+    .sidebar a:hover {
+        background-color: #34495e;
+        border-radius: 5px;
+    }
 
-/* Main Content */
-.main-content {
-    margin-left: 270px;
-    padding: 20px;
-}
+    /* Main Content */
+    .main-content {
+        margin-left: 270px;
+        padding: 20px;
+    }
 
-/* Buttons */
-button {
-    background-color: #3498db;
-    color: #fff;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
-}
+    /* Buttons */
+    button {
+        background-color: #3498db;
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+    }
 
-button:hover {
-    background-color: #2980b9;
-}
+    button:hover {
+        background-color: #2980b9;
+    }
 
-/* Text Areas and Inputs */
-textarea, input[type="text"] {
-    width: 100%;
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    box-sizing: border-box;
-}
+    /* Text Areas and Inputs */
+    textarea, input[type="text"] {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-sizing: border-box;
+    }
 
-textarea:focus, input[type="text"]:focus {
-    border-color: #3498db;
-    outline: none;
-}
+    textarea:focus, input[type="text"]:focus {
+        border-color: #3498db;
+        outline: none;
+    }
 
-/* Terminal Output */
-.code-output {
-    background-color: #1e1e1e;
-    color: #dcdcdc;
-    padding: 20px;
-    border-radius: 5px;
-    font-family: 'Courier New', Courier, monospace;
-}
+    /* Terminal Output */
+    .code-output {
+        background-color: #1e1e1e;
+        color: #dcdcdc;
+        padding: 20px;
+        border-radius: 5px;
+        font-family: 'Courier New', Courier, monospace;
+    }
 
-/* Chat History */
-.chat-history {
-    background-color: #ecf0f1;
-    padding: 20px;
-    border-radius: 5px;
-    max-height: 300px;
-    overflow-y: auto;
-}
+    /* Chat History */
+    .chat-history {
+        background-color: #ecf0f1;
+        padding: 20px;
+        border-radius: 5px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
 
-.chat-message {
-    margin-bottom: 10px;
-}
+    .chat-message {
+        margin-bottom: 10px;
+    }
 
-.chat-message.user {
-    text-align: right;
-    color: #3498db;
-}
+    .chat-message.user {
+        text-align: right;
+        color: #3498db;
+    }
 
-.chat-message.agent {
-    text-align: left;
-    color: #e74c3c;
-}
+    .chat-message.agent {
+        text-align: left;
+        color: #e74c3c;
+    }
 
-/* Project Management */
-.project-list {
-    background-color: #ecf0f1;
-    padding: 20px;
-    border-radius: 5px;
-    max-height: 300px;
-    overflow-y: auto;
-}
+    /* Project Management */
+    .project-list {
+        background-color: #ecf0f1;
+        padding: 20px;
+        border-radius: 5px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
 
-.project-item {
-    margin-bottom: 10px;
-}
+    .project-item {
+        margin-bottom: 10px;
+    }
 
-.project-item a {
-    color: #3498db;
-    text-decoration: none;
-}
+    .project-item a {
+        color: #3498db;
+        text-decoration: none;
+    }
 
-.project-item a:hover {
-    text-decoration: underline;
-}
-</style>
-""", unsafe_allow_html=True)
+    .project-item a:hover {
+        text-decoration: underline;
+    }
+    </style>
+    """, unsafe_allow_html=True)
