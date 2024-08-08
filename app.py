@@ -1,14 +1,20 @@
 import streamlit as st
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, RagRetriever, AutoModelForSeq2SeqLM
 import os
 import subprocess
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-from huggingface_hub import HfApi
+import black
+from pylint import lint
+from io import StringIO
+import sys
+import torch
+from huggingface_hub import hf_hub_url, cached_download, HfApi
 
 # Access Hugging Face API key from secrets
 hf_token = st.secrets["huggingface"]["hf_token"]
 if not hf_token:
     st.error("Hugging Face API key not found. Please make sure it is set in the secrets.")
 
+HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
 AVAILABLE_CODE_GENERATIVE_MODELS = ["bigcode/starcoder", "Salesforce/codegen-350M-mono", "microsoft/CodeGPT-small"]
