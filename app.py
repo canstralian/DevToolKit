@@ -13,8 +13,8 @@ except Exception as e:
     st.error(f"Unable to load secrets: {str(e)}")
     raise
 
-PROJECT_ROOT = "home/app/projects"
-AGENT_DIRECTORY = "home/app/agents"
+PROJECT_ROOT = "projects"
+AGENT_DIRECTORY = "agents"
 AVAILABLE_CODE_GENERATIVE_MODELS = ["bigcode/starcoder", "Salesforce/codegen-350M-mono", "microsoft/CodeGPT-small"]
 
 # Global state to manage communication between Tool Box and Workspace Chat App
@@ -42,7 +42,6 @@ class AIAgent:
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
@@ -55,13 +54,6 @@ I am confident that I can leverage my expertise to assist you in developing and 
 
     def deploy_built_space_to_hf(self):
         # Implement logic to deploy the built space to Hugging Face Spaces
-        # This could involve creating a new Space, uploading files, and configuring the Space
-        # Use the HfApi to interact with the Hugging Face API
-        # Example:
-        # repository = self._hf_api.create_repo(repo_id="my-new-space", private=False)
-        # ... upload files to the repository
-        # ... configure the Space
-        # return repository
         pass
 
     def has_valid_hf_token(self):
@@ -134,7 +126,7 @@ if __name__ == "__main__":
     st.sidebar.subheader("Terminal")
     command = st.sidebar.text_input("Enter a command:")
     if command:
-        output, error = run_command(command)
+        output, error = run_code(command)
         if error:
             st.sidebar.error(f"Error executing command: {error}")
         else:
@@ -184,7 +176,7 @@ if __name__ == "__main__":
         st.write(next_step)
         if agent._hf_api and agent.has_valid_hf_token():
             repository = agent.deploy_built_space_to_hf()
-            st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
+            st.markdown("## Congratulations! Successfully deployed Space �� ##")
             st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
     # CSS for styling
@@ -198,17 +190,14 @@ if __name__ == "__main__":
         margin: 0;
         padding: 0;
     }
-
     h1, h2, h3, h4, h5, h6 {
         color: #333;
     }
-
     .container {
         width: 90%;
         margin: 0 auto;
         padding: 20px;
     }
-
     /* Navigation Sidebar */
     .sidebar {
         background-color: #2c3e50;
@@ -221,25 +210,21 @@ if __name__ == "__main__":
         width: 250px;
         overflow-y: auto;
     }
-
     .sidebar a {
         color: #ecf0f1;
         text-decoration: none;
         display: block;
         padding: 10px 0;
     }
-
     .sidebar a:hover {
         background-color: #34495e;
         border-radius: 5px;
     }
-
     /* Main Content */
     .main-content {
         margin-left: 270px;
         padding: 20px;
     }
-
     /* Buttons */
     button {
         background-color: #3498db;
@@ -250,11 +235,9 @@ if __name__ == "__main__":
         cursor: pointer;
         font-size: 16px;
     }
-
     button:hover {
         background-color: #2980b9;
     }
-
     /* Text Areas and Inputs */
     textarea, input[type="text"] {
         width: 100%;
@@ -264,12 +247,10 @@ if __name__ == "__main__":
         border-radius: 5px;
         box-sizing: border-box;
     }
-
     textarea:focus, input[type="text"]:focus {
         border-color: #3498db;
         outline: none;
     }
-
     /* Terminal Output */
     .code-output {
         background-color: #1e1e1e;
@@ -278,7 +259,6 @@ if __name__ == "__main__":
         border-radius: 5px;
         font-family: 'Courier New', Courier, monospace;
     }
-
     /* Chat History */
     .chat-history {
         background-color: #ecf0f1;
@@ -287,21 +267,17 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
-
     .chat-message {
         margin-bottom: 10px;
     }
-
     .chat-message.user {
         text-align: right;
         color: #3498db;
     }
-
     .chat-message.agent {
         text-align: left;
         color: #e74c3c;
     }
-
     /* Project Management */
     .project-list {
         background-color: #ecf0f1;
@@ -310,16 +286,13 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
-
     .project-item {
         margin-bottom: 10px;
     }
-
     .project-item a {
         color: #3498db;
         text-decoration: none;
     }
-
     .project-item a:hover {
         text-decoration: underline;
     }
