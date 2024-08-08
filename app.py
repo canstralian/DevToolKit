@@ -29,6 +29,7 @@ class AIAgent:
         self.name = name
         self.description = description
         self.skills = skills
+        self._hf_api = HfApi(token=huggingface_token)
 
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
@@ -47,7 +48,18 @@ I am confident that I can leverage my expertise to assist you in developing and 
         return summary, next_step
 
     def deploy_built_space_to_hf(self):
+        # Implement logic to deploy the built space to Hugging Face Spaces
+        # This could involve creating a new Space, uploading files, and configuring the Space
+        # Use the HfApi to interact with the Hugging Face API
+        # Example:
+        # repository = self._hf_api.create_repo(repo_id="my-new-space", private=False)
+        # ... upload files to the repository
+        # ... configure the Space
+        # return repository
         pass
+
+    def has_valid_hf_token(self):
+        return self._hf_api.whoami() is not None
 
 def process_input(input_text):
     chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium")
@@ -88,74 +100,86 @@ def display_workspace_projects(workspace_projects):
     return "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
 if __name__ == "__main__":
-    st.sidebar.title("Navigation")
-    app_mode = st.sidebar.selectbox("Choose the app mode", ["Home", "Terminal", "Explorer", "Code Editor", "Build & Deploy"])
+    st.set_page_config(layout="wide", page_title="AI-Powered Development Platform")
 
-    if app_mode == "Home":
-        st.title("Welcome to AI-Guided Development")
-        st.write("This application helps you build and deploy applications with the assistance of an AI Guide.")
-        st.write("Toggle the AI Guide from the sidebar to choose the level of assistance you need.")
+    # Sidebar
+    st.sidebar.title("AI Development Platform")
+    st.sidebar.header("Tool Box")
+    st.sidebar.subheader("Workspace Management")
+    project_name_input = st.sidebar.text_input("Project Name:")
+    create_project_button = st.sidebar.button("Create Project")
+    if create_project_button:
+        st.sidebar.write(workspace_interface(project_name_input))
 
-    elif app_mode == "Terminal":
-        st.header("Terminal")
-        terminal_input = st.text_input("Enter a command:")
-        if st.button("Run"):
-            output = run_code(terminal_input)
-            st.session_state.terminal_history.append((terminal_input, output))
-            st.code(output, language="bash")
-        if ai_guide_level != "No Assistance":
-            st.write("Run commands here to add packages to your project. For example: `pip install <package-name>`.")
-            if terminal_input and "install" in terminal_input:
-                package_name = terminal_input.split("install")[-1].strip()
-                st.write(f"Package `{package_name}` will be added to your project.")
+    st.sidebar.subheader("Code Generation")
+    selected_model = st.sidebar.selectbox("Select Code Model", AVAILABLE_CODE_GENERATIVE_MODELS)
+    code_input = st.sidebar.text_area("Enter Code Prompt:")
+    generate_code_button = st.sidebar.button("Generate Code")
+    if generate_code_button:
+        if selected_model:
+            tokenizer = AutoTokenizer.from_pretrained(selected_model)
+            model = AutoModelForCausalLM.from_pretrained(selected_model)
+            code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+            generated_code = code_generator(code_input, max_length=500, num_return_sequences=1)[0]['generated_text']
+            st.sidebar.code(generated_code)
+        else:
+            st.sidebar.error("Please select a code model.")
 
-    elif app_mode == "Explorer":
-        st.header("Explorer")
-        uploaded_file = st.file_uploader("Upload a file", type=["py"])
-        if uploaded_file:
-            file_details = {"FileName": uploaded_file.name, "FileType": uploaded_file.type}
-            st.write(file_details)
-            save_path = os.path.join(PROJECT_ROOT, uploaded_file.name)
-            with open(save_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success(f"File {uploaded_file.name} saved successfully!")
+    st.sidebar.subheader("Terminal")
+    command = st.sidebar.text_input("Enter a command:")
+    if command:
+        output, error = run_command(command)
+        if error:
+            st.sidebar.error(f"Error executing command: {error}")
+        else:
+            st.sidebar.code(output)
 
-        st.write("Drag and drop files into the 'app' folder.")
-        for project, details in st.session_state.workspace_projects.items():
-            st.write(f"Project: {project}")
-            for file in details['files']:
-                st.write(f"  - {file}")
-                if st.button(f"Move {file} to app folder"):
-                    # Logic to move file to 'app' folder
-                    pass
-        if ai_guide_level != "No Assistance":
-            st.write("You can upload files and move them into the 'app' folder for building your application.")
+    # Main Content
+    st.title("AI-Powered Development Platform")
+    st.header("Workspace")
+    st.subheader("Chat with an AI Agent")
+    chat_input = st.text_input("Enter your message:")
+    if chat_input:
+        st.session_state.chat_history.append((chat_input, process_input(chat_input)))
 
-    elif app_mode == "Code Editor":
-        st.header("Code Editor")
-        code_editor = st.text_area("Write your code:", height=300)
-        if st.button("Save Code"):
-            # Logic to save code
-            pass
-        if ai_guide_level != "No Assistance":
-            st.write("The function `foo()` requires the `bar` package. Add it to `requirements.txt`.")
+    st.markdown("## Chat History ##")
+    st.markdown(display_chat_history(st.session_state.chat_history))
 
-    elif app_mode == "Build & Deploy":
-        st.header("Build & Deploy")
-        project_name_input = st.text_input("Enter Project Name for Automation:")
-        if st.button("Automate"):
-            selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
-            selected_model = st.selectbox("Select a code-generative model", AVAILABLE_CODE_GENERATIVE_MODELS)
-            agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-            summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name_input, selected_model, huggingface_token)
-            st.write("Autonomous Build Summary:")
-            st.write(summary)
-            st.write("Next Step:")
-            st.write(next_step)
-            if agent._hf_api and agent.has_valid_hf_token():
-                repository = agent.deploy_built_space_to_hf()
-                st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
-                st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
+    st.subheader("Available Agents")
+    for agent_name in st.session_state.available_agents:
+        st.write(f"**{agent_name}**")
+
+    st.subheader("Project Management")
+    st.markdown(display_workspace_projects(st.session_state.workspace_projects))
+
+    # AI Guide
+    if ai_guide_level == "Full Assistance":
+        st.markdown("## AI Guide: Full Assistance ##")
+        st.write("**Recommended Action:**")
+        st.write("Create a new project and then generate some code.")
+    elif ai_guide_level == "Partial Assistance":
+        st.markdown("## AI Guide: Partial Assistance ##")
+        st.write("**Tips:**")
+        st.write("Use the chat interface to ask questions about your project.")
+        st.write("Use the code generation tool to generate code snippets.")
+    else:
+        st.markdown("## AI Guide: No Assistance ##")
+        st.write("You are on your own!")
+
+    # Autonomous Build
+    if st.button("Autonomous Build"):
+        project_name = project_name_input
+        selected_model = selected_model
+        agent = AIAgent("Code Architect", "I am an expert in code generation and deployment.", ["Code Generation", "Deployment"])
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name, selected_model, huggingface_token)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
+        if agent._hf_api and agent.has_valid_hf_token():
+            repository = agent.deploy_built_space_to_hf()
+            st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
+            st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
     # CSS for styling
     st.markdown("""
