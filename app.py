@@ -10,7 +10,7 @@ import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi
 
 # Access Hugging Face API key from secrets
-hf_token = st.secrets["huggingface"]["hf_token"]
+hf_token = st.secrets["secrets"]["hf_token"]
 if not hf_token:
     st.error("Hugging Face API key not found. Please make sure it is set in the secrets.")
 
