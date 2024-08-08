@@ -4,8 +4,16 @@ import subprocess
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
 
-# Set your Hugging Face API key here
-huggingface_token = st.secrets["huggingface"]["hf_token"]
+import json
+
+try:
+    huggingface_json = st.secrets["huggingface"]
+except Exception as e:
+    print("Unable to load secrets: ", str(e))
+    raise
+
+huggingface_data = json.loads(huggingface_json)
+huggingface_token = huggingface_data["hf_token"]
 
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
