@@ -57,7 +57,7 @@ I am confident that I can leverage my expertise to assist you in developing and 
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
         return summary, next_step
 
-    def deploy_built_space_to_hf(self):
+    def deploy_built_space_to_hf(self, project_name):
         # Assuming you have a function that generates the space content
         space_content = generate_space_content(project_name)
         repository = self._hf_api.create_repo(
@@ -119,7 +119,7 @@ def display_workspace_projects(workspace_projects):
 
 def generate_space_content(project_name):
     # Logic to generate the Streamlit app content based on project_name
-    # ... (This is where you'll need to implement the actual code generation)
+    #... (This is where you'll need to implement the actual code generation)
     return "import streamlit as st\nst.title('My Streamlit App')\nst.write('Hello, world!')"
 
 def get_code_generation_model(language):
@@ -156,7 +156,7 @@ if __name__ == "__main__":
             output = run_code(terminal_input)
             st.session_state.terminal_history.append((terminal_input, output))
             st.code(output, language="bash")
-        if ai_guide_level != "No Assistance":
+        if ai_guide_level!= "No Assistance":
             st.write("Run commands here to add packages to your project. For example: `pip install <package-name>`.")
             if terminal_input and "install" in terminal_input:
                 package_name = terminal_input.split("install")[-1].strip()
@@ -181,7 +181,7 @@ if __name__ == "__main__":
                 if st.button(f"Move {file} to app folder"):
                     # Logic to move file to 'app' folder
                     pass
-        if ai_guide_level != "No Assistance":
+        if ai_guide_level!= "No Assistance":
             st.write("You can upload files and move them into the 'app' folder for building your application.")
 
     elif app_mode == "Code Editor":
@@ -190,7 +190,7 @@ if __name__ == "__main__":
         if st.button("Save Code"):
             # Logic to save code
             pass
-        if ai_guide_level != "No Assistance":
+        if ai_guide_level!= "No Assistance":
             st.write("The function `foo()` requires the `bar` package. Add it to `requirements.txt`.")
 
     elif app_mode == "Build & Deploy":
@@ -208,12 +208,12 @@ if __name__ == "__main__":
             st.write("Next Step:")
             st.write(next_step)
             if agent._hf_api and agent.has_valid_hf_token():
-                repository = agent.deploy_built_space_to_hf()
+                repository = agent.deploy_built_space_to_hf(project_name_input)
                 st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
                 st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
     # Code Generation
-    if ai_guide_level != "No Assistance":
+    if ai_guide_level!= "No Assistance":
         code_input = st.text_area("Enter code to generate:", height=300)
         if st.button("Generate Code"):
             language = st.session_state.selected_language
@@ -236,14 +236,14 @@ if __name__ == "__main__":
         color: #333;
     }
 
-    .container {
+  .container {
         width: 90%;
         margin: 0 auto;
         padding: 20px;
     }
 
     /* Navigation Sidebar */
-    .sidebar {
+  .sidebar {
         background-color: #2c3e50;
         color: #ecf0f1;
         padding: 20px;
@@ -255,20 +255,20 @@ if __name__ == "__main__":
         overflow-y: auto;
     }
 
-    .sidebar a {
+  .sidebar a {
         color: #ecf0f1;
         text-decoration: none;
         display: block;
         padding: 10px 0;
     }
 
-    .sidebar a:hover {
+  .sidebar a:hover {
         background-color: #34495e;
         border-radius: 5px;
     }
 
     /* Main Content */
-    .main-content {
+  .main-content {
         margin-left: 270px;
         padding: 20px;
     }
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     }
 
     /* Terminal Output */
-    .code-output {
+  .code-output {
         background-color: #1e1e1e;
         color: #dcdcdc;
         padding: 20px;
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     }
 
     /* Chat History */
-    .chat-history {
+  .chat-history {
         background-color: #ecf0f1;
         padding: 20px;
         border-radius: 5px;
@@ -321,22 +321,22 @@ if __name__ == "__main__":
         overflow-y: auto;
     }
 
-    .chat-message {
+  .chat-message {
         margin-bottom: 10px;
     }
 
-    .chat-message.user {
+  .chat-message.user {
         text-align: right;
         color: #3498db;
     }
 
-    .chat-message.agent {
+  .chat-message.agent {
         text-align: left;
         color: #e74c3c;
     }
 
     /* Project Management */
-    .project-list {
+  .project-list {
         background-color: #ecf0f1;
         padding: 20px;
         border-radius: 5px;
@@ -344,16 +344,16 @@ if __name__ == "__main__":
         overflow-y: auto;
     }
 
-    .project-item {
+  .project-item {
         margin-bottom: 10px;
     }
 
-    .project-item a {
+  .project-item a {
         color: #3498db;
         text-decoration: none;
     }
 
-    .project-item a:hover {
+  .project-item a:hover {
         text-decoration: underline;
     }
     </style>
