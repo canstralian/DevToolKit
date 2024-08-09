@@ -8,6 +8,8 @@ from io import StringIO
 import sys
 import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi
+import re
+from typing import List, Dict
 
 # Access Hugging Face API key from secrets
 hf_token = st.secrets["hf_token"]
@@ -29,27 +31,17 @@ if 'workspace_projects' not in st.session_state:
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
 
-# Initialize the session state variable as an empty string
-st.session_state.user_input = ""
-
-# Create the text input widget
-user_input = st.text_input("Enter your text:", "Initial text")
-
-# Use the get() method to get the current value of the widget and update it
-if st.button("Update"):
-    st.session_state.user_input = user_input
-    
 # AI Guide Toggle
 ai_guide_level = st.sidebar.radio("AI Guide Level", ["Full Assistance", "Partial Assistance", "No Assistance"])
 
 class AIAgent:
-    def __init__(self, name, description, skills):
+    def __init__(self, name: str, description: str, skills: List[str]):
         self.name = name
         self.description = description
         self.skills = skills
         self._hf_api = HfApi()  # Initialize HfApi here
 
-    def create_agent_prompt(self):
+    def create_agent_prompt(self) -> str:
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
@@ -59,13 +51,14 @@ I am confident that I can leverage my expertise to assist you in developing and 
 """
         return agent_prompt
 
-    def autonomous_build(self, chat_history, workspace_projects, project_name, selected_model, hf_token):
+    def autonomous_build(self, chat_history: List[tuple[str, str]], workspace_projects: Dict[str, Dict], 
+                        project_name: str, selected_model: str, hf_token: str) -> tuple[str, str]:
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
         return summary, next_step
 
-    def deploy_built_space_to_hf(self):
+    def deploy_built_space_to_hf(self, project_name: str) -> str:
         # Assuming you have a function that generates the space content
         space_content = generate_space_content(project_name)
         repository = self._hf_api.create_repo(
@@ -82,24 +75,24 @@ I am confident that I can leverage my expertise to assist you in developing and 
             repo_type="space",
             token=hf_token
         )
-        return repository
+        return repository.name
 
-    def has_valid_hf_token(self):
+    def has_valid_hf_token(self) -> bool:
         return self._hf_api.whoami(token=hf_token) is not None
 
-def process_input(input_text):
+def process_input(input_text: str) -> str:
     chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium")
     response = chatbot(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
     return response
 
-def run_code(code):
+def run_code(code: str) -> str:
     try:
         result = subprocess.run(code, shell=True, capture_output=True, text=True)
         return result.stdout
     except Exception as e:
         return str(e)
 
-def workspace_interface(project_name):
+def workspace_interface(project_name: str) -> str:
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(project_path):
         os.makedirs(project_path)
@@ -108,7 +101,7 @@ def workspace_interface(project_name):
     else:
         return f"Project '{project_name}' already exists."
 
-def add_code_to_workspace(project_name, code, file_name):
+def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(project_path):
         return f"Project '{project_name}' does not exist."
@@ -119,24 +112,66 @@ def add_code_to_workspace(project_name, code, file_name):
     st.session_state.workspace_projects[project_name]['files'].append(file_name)
     return f"Code added to '{file_name}' in project '{project_name}'."
 
-def display_chat_history(chat_history):
+def display_chat_history(chat_history: List[tuple[str, str]]) -> str:
     return "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
 
-def display_workspace_projects(workspace_projects):
+def display_workspace_projects(workspace_projects: Dict[str, Dict]) -> str:
     return "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
-def generate_space_content(project_name):
+def generate_space_content(project_name: str) -> str:
     # Logic to generate the Streamlit app content based on project_name
     # ... (This is where you'll need to implement the actual code generation)
     return "import streamlit as st\nst.title('My Streamlit App')\nst.write('Hello, world!')"
 
 # Function to display the AI Guide chat
-def display_ai_guide_chat(chat_history):
+def display_ai_guide_chat(chat_history: List[tuple[str, str]]):
     st.markdown("<div class='chat-history'>", unsafe_allow_html=True)
     for user_message, agent_message in chat_history:
         st.markdown(f"<div class='chat-message user'>{user_message}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='chat-message agent'>{agent_message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+# Load the CodeGPT model for code completion
+code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer="microsoft/CodeGPT-small-py")
+
+def analyze_code(code: str) -> List[str]:
+    hints = []
+    
+    # Example pointer: Suggest using list comprehensions
+    if re.search(r'for .* in .*:\n\s+.*\.append\(', code):
+        hints.append("Consider using a list comprehension instead of a loop for appending to a list.")
+    
+    # Example pointer: Recommend using f-strings for string formatting
+    if re.search(r'\".*\%s\"|\'.*\%s\'', code) or re.search(r'\".*\%d\"|\'.*\%d\'', code):
+        hints.append("Consider using f-strings for cleaner and more efficient string formatting.")
+    
+    # Example pointer: Avoid using global variables
+    if re.search(r'\bglobal\b', code):
+        hints.append("Avoid using global variables. Consider passing parameters or using classes.")
+    
+    # Example pointer: Recommend using `with` statement for file operations
+    if re.search(r'open\(.+\)', code) and not re.search(r'with open\(.+\)', code):
+        hints.append("Consider using the `with` statement when opening files to ensure proper resource management.")
+    
+    return hints
+
+def get_code_completion(prompt: str) -> str:
+    # Generate code completion based on the current code input
+    completions = code_generator(prompt, max_length=50, num_return_sequences=1)
+    return completions[0]['generated_text']
+
+def lint_code(code: str) -> List[str]:
+    # Capture pylint output
+    pylint_output = StringIO()
+    sys.stdout = pylint_output
+    
+    # Run pylint on the provided code
+    pylint.lint.Run(['--from-stdin'], do_exit=False, argv=[], stdin=StringIO(code))
+    
+    # Reset stdout and fetch lint results
+    sys.stdout = sys.__stdout__
+    lint_results = pylint_output.getvalue().splitlines()
+    return lint_results
 
 if __name__ == "__main__":
     st.sidebar.title("Navigation")
@@ -155,10 +190,10 @@ if __name__ == "__main__":
             st.session_state.terminal_history.append((terminal_input, output))
             st.code(output, language="bash")
         if ai_guide_level != "No Assistance":
-            st.write("Run commands here to add packages to your project. For example: `pip install <package-name>`.")
+            st.write("Run commands here to add packages to your project. For example: pip install <package-name>.")
             if terminal_input and "install" in terminal_input:
                 package_name = terminal_input.split("install")[-1].strip()
-                st.write(f"Package `{package_name}` will be added to your project.")
+                st.write(f"Package {package_name} will be added to your project.")
 
     elif app_mode == "Explorer":
         st.header("Explorer")
@@ -189,7 +224,31 @@ if __name__ == "__main__":
             # Logic to save code
             pass
         if ai_guide_level != "No Assistance":
-            st.write("The function `foo()` requires the `bar` package. Add it to `requirements.txt`.")
+            st.write("The function foo() requires the bar package. Add it to requirements.txt.")
+
+        # Analyze code and provide real-time hints
+        hints = analyze_code(code_editor)
+        if hints:
+            st.write("**Helpful Hints:**")
+            for hint in hints:
+                st.write(f"- {hint}")
+
+        if st.button("Get Code Suggestion"):
+            # Provide a predictive code completion
+            completion = get_code_completion(code_editor)
+            st.write("**Suggested Code Completion:**")
+            st.code(completion, language="python")
+
+        if st.button("Check Code"):
+            # Analyze the code for errors and warnings
+            lint_results = lint_code(code_editor)
+
+            if lint_results:
+                st.write("**Errors and Warnings:**")
+                for result in lint_results:
+                    st.write(result)
+            else:
+                st.write("No issues found! Your code is clean.")
 
     elif app_mode == "Build & Deploy":
         st.header("Build & Deploy")
@@ -204,9 +263,9 @@ if __name__ == "__main__":
             st.write("Next Step:")
             st.write(next_step)
             if agent._hf_api and agent.has_valid_hf_token():
-                repository = agent.deploy_built_space_to_hf()
+                repository_name = agent.deploy_built_space_to_hf(project_name_input)
                 st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
-                st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
+                st.markdown(f"[Check out your new Space here](hf.co/{repository_name})")
 
     # AI Guide Chat
     if ai_guide_level != "No Assistance":
