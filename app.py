@@ -8,8 +8,6 @@ from io import StringIO
 import sys
 import torch
 from huggingface_hub import hf_hub_url, cached_download, HfApi
-import re
-from typing import List, Dict
 
 # Access Hugging Face API key from secrets
 hf_token = st.secrets["hf_token"]
@@ -30,34 +28,36 @@ if 'workspace_projects' not in st.session_state:
     st.session_state.workspace_projects = {}
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
+if 'selected_language' not in st.session_state:
+    st.session_state.selected_language = "Python"
 
 # AI Guide Toggle
 ai_guide_level = st.sidebar.radio("AI Guide Level", ["Full Assistance", "Partial Assistance", "No Assistance"])
 
 class AIAgent:
-    def __init__(self, name: str, description: str, skills: List[str]):
+    def __init__(self, name, description, skills):
         self.name = name
         self.description = description
         self.skills = skills
         self._hf_api = HfApi()  # Initialize HfApi here
 
-    def create_agent_prompt(self) -> str:
+    def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
+
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
 
-    def autonomous_build(self, chat_history: List[tuple[str, str]], workspace_projects: Dict[str, Dict], 
-                        project_name: str, selected_model: str, hf_token: str) -> tuple[str, str]:
+    def autonomous_build(self, chat_history, workspace_projects, project_name, selected_model, hf_token):
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
         return summary, next_step
 
-    def deploy_built_space_to_hf(self, project_name: str) -> str:
+    def deploy_built_space_to_hf(self):
         # Assuming you have a function that generates the space content
         space_content = generate_space_content(project_name)
         repository = self._hf_api.create_repo(
@@ -74,26 +74,24 @@ I am confident that I can leverage my expertise to assist you in developing and 
             repo_type="space",
             token=hf_token
         )
-        return repository.name
+        return repository
 
-    def has_valid_hf_token(self) -> bool:
+    def has_valid_hf_token(self):
         return self._hf_api.whoami(token=hf_token) is not None
 
-def process_input(input_text: str) -> str:
-    # Load the DialoGPT tokenizer explicitly
-    chatbot_tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium", clean_up_tokenization_spaces=True)
-    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer=chatbot_tokenizer)
+def process_input(input_text):
+    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium")
     response = chatbot(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
     return response
 
-def run_code(code: str) -> str:
+def run_code(code):
     try:
         result = subprocess.run(code, shell=True, capture_output=True, text=True)
         return result.stdout
     except Exception as e:
         return str(e)
 
-def workspace_interface(project_name: str) -> str:
+def workspace_interface(project_name):
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(project_path):
         os.makedirs(project_path)
@@ -102,7 +100,7 @@ def workspace_interface(project_name: str) -> str:
     else:
         return f"Project '{project_name}' already exists."
 
-def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
+def add_code_to_workspace(project_name, code, file_name):
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(project_path):
         return f"Project '{project_name}' does not exist."
@@ -113,69 +111,34 @@ def add_code_to_workspace(project_name: str, code: str, file_name: str) -> str:
     st.session_state.workspace_projects[project_name]['files'].append(file_name)
     return f"Code added to '{file_name}' in project '{project_name}'."
 
-def display_chat_history(chat_history: List[tuple[str, str]]) -> str:
+def display_chat_history(chat_history):
     return "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
 
-def display_workspace_projects(workspace_projects: Dict[str, Dict]) -> str:
+def display_workspace_projects(workspace_projects):
     return "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
 
-def generate_space_content(project_name: str) -> str:
+def generate_space_content(project_name):
     # Logic to generate the Streamlit app content based on project_name
     # ... (This is where you'll need to implement the actual code generation)
     return "import streamlit as st\nst.title('My Streamlit App')\nst.write('Hello, world!')"
 
-# Function to display the AI Guide chat
-def display_ai_guide_chat(chat_history: List[tuple[str, str]]):
-    st.markdown("<div class='chat-history'>", unsafe_allow_html=True)
-    for user_message, agent_message in chat_history:
-        st.markdown(f"<div class='chat-message user'>{user_message}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='chat-message agent'>{agent_message}</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+def get_code_generation_model(language):
+    # Return the code generation model based on the selected language
+    if language == "Python":
+        return "bigcode/starcoder"
+    elif language == "Java":
+        return "Salesforce/codegen-350M-mono"
+    elif language == "JavaScript":
+        return "microsoft/CodeGPT-small"
+    else:
+        return "bigcode/starcoder"
 
-# Load the CodeGPT tokenizer explicitly
-code_generator_tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
-# Load the CodeGPT model for code completion
-code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer=code_generator_tokenizer)
-
-def analyze_code(code: str) -> List[str]:
-    hints = []
-    
-    # Example pointer: Suggest using list comprehensions
-    if re.search(r'for .* in .*:\n\s+.*\.append\(', code):
-        hints.append("Consider using a list comprehension instead of a loop for appending to a list.")
-    
-    # Example pointer: Recommend using f-strings for string formatting
-    if re.search(r'\".*\%s\"|\'.*\%s\'', code) or re.search(r'\".*\%d\"|\'.*\%d\'', code):
-        hints.append("Consider using f-strings for cleaner and more efficient string formatting.")
-    
-    # Example pointer: Avoid using global variables
-    if re.search(r'\bglobal\b', code):
-        hints.append("Avoid using global variables. Consider passing parameters or using classes.")
-    
-    # Example pointer: Recommend using `with` statement for file operations
-    if re.search(r'open\(.+\)', code) and not re.search(r'with open\(.+\)', code):
-        hints.append("Consider using the `with` statement when opening files to ensure proper resource management.")
-    
-    return hints
-
-def get_code_completion(prompt: str) -> str:
-    # Generate code completion based on the current code input
-    # Use max_new_tokens instead of max_length
-    completions = code_generator(prompt, max_new_tokens=max_new_tokens, num_return_sequences=1) 
-    return completions[0]['generated_text']
-
-def lint_code(code: str) -> List[str]:
-    # Capture pylint output
-    pylint_output = StringIO()
-    sys.stdout = pylint_output
-    
-    # Run pylint on the provided code
-    pylint.lint.Run(['--from-stdin'], do_exit=False, argv=[], stdin=StringIO(code))
-    
-    # Reset stdout and fetch lint results
-    sys.stdout = sys.__stdout__
-    lint_results = pylint_output.getvalue().splitlines()
-    return lint_results
+def generate_code(input_text, language):
+    # Use the selected code generation model to generate code
+    model_name = get_code_generation_model(language)
+    model = pipeline("text2text-generation", model=model_name)
+    response = model(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
+    return response
 
 if __name__ == "__main__":
     st.sidebar.title("Navigation")
@@ -192,12 +155,12 @@ if __name__ == "__main__":
         if st.button("Run"):
             output = run_code(terminal_input)
             st.session_state.terminal_history.append((terminal_input, output))
-            st.code(output, language="bash", "java", "html","python", "solidity", "typescript", "streamlit", "gradio", "css", "xcode", "sql", "svg", "rust")
+            st.code(output, language="bash")
         if ai_guide_level != "No Assistance":
-            st.write("Run commands here to add packages to your project. For example: pip install <package-name>.")
+            st.write("Run commands here to add packages to your project. For example: `pip install <package-name>`.")
             if terminal_input and "install" in terminal_input:
                 package_name = terminal_input.split("install")[-1].strip()
-                st.write(f"Package {package_name} will be added to your project.")
+                st.write(f"Package `{package_name}` will be added to your project.")
 
     elif app_mode == "Explorer":
         st.header("Explorer")
@@ -228,38 +191,16 @@ if __name__ == "__main__":
             # Logic to save code
             pass
         if ai_guide_level != "No Assistance":
-            st.write("The function foo() requires the bar package. Add it to requirements.txt.")
-
-        # Analyze code and provide real-time hints
-        hints = analyze_code(code_editor)
-        if hints:
-            st.write("**Helpful Hints:**")
-            for hint in hints:
-                st.write(f"- {hint}")
-
-        if st.button("Get Code Suggestion"):
-            # Provide a predictive code completion
-            completion = get_code_completion(code_editor)
-            st.write("**Suggested Code Completion:**")
-            st.code(completion, language="python")
-
-        if st.button("Check Code"):
-            # Analyze the code for errors and warnings
-            lint_results = lint_code(code_editor)
-
-            if lint_results:
-                st.write("**Errors and Warnings:**")
-                for result in lint_results:
-                    st.write(result)
-            else:
-                st.write("No issues found! Your code is clean.")
+            st.write("The function `foo()` requires the `bar` package. Add it to `requirements.txt`.")
 
     elif app_mode == "Build & Deploy":
         st.header("Build & Deploy")
         project_name_input = st.text_input("Enter Project Name for Automation:")
+        selected_language = st.selectbox("Select a programming language:", ["Python", "Java", "JavaScript"])
+        st.session_state.selected_language = selected_language
         if st.button("Automate"):
             selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
-            selected_model = st.selectbox("Select a code-generative model", AVAILABLE_CODE_GENERATIVE_MODELS)
+            selected_model = get_code_generation_model(selected_language)
             agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
             summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects, project_name_input, selected_model, hf_token)
             st.write("Autonomous Build Summary:")
@@ -267,22 +208,17 @@ if __name__ == "__main__":
             st.write("Next Step:")
             st.write(next_step)
             if agent._hf_api and agent.has_valid_hf_token():
-                repository_name = agent.deploy_built_space_to_hf(project_name_input)
+                repository = agent.deploy_built_space_to_hf()
                 st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
-                st.markdown(f"[Check out your new Space here](hf.co/{repository_name})")
+                st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
 
-    # AI Guide Chat
+    # Code Generation
     if ai_guide_level != "No Assistance":
-        display_ai_guide_chat(st.session_state.chat_history)
-        # Add a text input for user to interact with the AI Guide
-        user_input = st.text_input("Ask the AI Guide a question:", key="user_input")
-        if st.button("Send"):
-            if user_input:
-                # Process the user's input and get a response from the AI Guide
-                agent_response = process_input(user_input)
-                st.session_state.chat_history.append((user_input, agent_response))
-                # Clear the user input field
-                st.session_state.user_input = ""
+        code_input = st.text_area("Enter code to generate:", height=300)
+        if st.button("Generate Code"):
+            language = st.session_state.selected_language
+            generated_code = generate_code(code_input, language)
+            st.code(generated_code, language=language)
 
     # CSS for styling
     st.markdown("""
@@ -295,14 +231,17 @@ if __name__ == "__main__":
         margin: 0;
         padding: 0;
     }
+
     h1, h2, h3, h4, h5, h6 {
         color: #333;
     }
+
     .container {
         width: 90%;
         margin: 0 auto;
         padding: 20px;
     }
+
     /* Navigation Sidebar */
     .sidebar {
         background-color: #2c3e50;
@@ -315,21 +254,25 @@ if __name__ == "__main__":
         width: 250px;
         overflow-y: auto;
     }
+
     .sidebar a {
         color: #ecf0f1;
         text-decoration: none;
         display: block;
         padding: 10px 0;
     }
+
     .sidebar a:hover {
         background-color: #34495e;
         border-radius: 5px;
     }
+
     /* Main Content */
     .main-content {
         margin-left: 270px;
         padding: 20px;
     }
+
     /* Buttons */
     button {
         background-color: #3498db;
@@ -340,9 +283,11 @@ if __name__ == "__main__":
         cursor: pointer;
         font-size: 16px;
     }
+
     button:hover {
         background-color: #2980b9;
     }
+
     /* Text Areas and Inputs */
     textarea, input[type="text"] {
         width: 100%;
@@ -352,10 +297,12 @@ if __name__ == "__main__":
         border-radius: 5px;
         box-sizing: border-box;
     }
+
     textarea:focus, input[type="text"]:focus {
         border-color: #3498db;
         outline: none;
     }
+
     /* Terminal Output */
     .code-output {
         background-color: #1e1e1e;
@@ -364,6 +311,7 @@ if __name__ == "__main__":
         border-radius: 5px;
         font-family: 'Courier New', Courier, monospace;
     }
+
     /* Chat History */
     .chat-history {
         background-color: #ecf0f1;
@@ -372,17 +320,21 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
+
     .chat-message {
         margin-bottom: 10px;
     }
+
     .chat-message.user {
         text-align: right;
         color: #3498db;
     }
+
     .chat-message.agent {
         text-align: left;
         color: #e74c3c;
     }
+
     /* Project Management */
     .project-list {
         background-color: #ecf0f1;
@@ -391,13 +343,16 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
+
     .project-item {
         margin-bottom: 10px;
     }
+
     .project-item a {
         color: #3498db;
         text-decoration: none;
     }
+
     .project-item a:hover {
         text-decoration: underline;
     }
