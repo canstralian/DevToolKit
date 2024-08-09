@@ -46,7 +46,6 @@ class AIAgent:
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
@@ -81,7 +80,7 @@ I am confident that I can leverage my expertise to assist you in developing and 
         return self._hf_api.whoami(token=hf_token) is not None
 
 def process_input(input_text: str) -> str:
-    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium")
+    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium", clean_up_tokenization_spaces=True)
     response = chatbot(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
     return response
 
@@ -132,7 +131,7 @@ def display_ai_guide_chat(chat_history: List[tuple[str, str]]):
     st.markdown("</div>", unsafe_allow_html=True)
 
 # Load the CodeGPT model for code completion
-code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer="microsoft/CodeGPT-small-py")
+code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer="microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
 
 def analyze_code(code: str) -> List[str]:
     hints = []
@@ -291,17 +290,14 @@ if __name__ == "__main__":
         margin: 0;
         padding: 0;
     }
-
     h1, h2, h3, h4, h5, h6 {
         color: #333;
     }
-
     .container {
         width: 90%;
         margin: 0 auto;
         padding: 20px;
     }
-
     /* Navigation Sidebar */
     .sidebar {
         background-color: #2c3e50;
@@ -314,25 +310,21 @@ if __name__ == "__main__":
         width: 250px;
         overflow-y: auto;
     }
-
     .sidebar a {
         color: #ecf0f1;
         text-decoration: none;
         display: block;
         padding: 10px 0;
     }
-
     .sidebar a:hover {
         background-color: #34495e;
         border-radius: 5px;
     }
-
     /* Main Content */
     .main-content {
         margin-left: 270px;
         padding: 20px;
     }
-
     /* Buttons */
     button {
         background-color: #3498db;
@@ -343,11 +335,9 @@ if __name__ == "__main__":
         cursor: pointer;
         font-size: 16px;
     }
-
     button:hover {
         background-color: #2980b9;
     }
-
     /* Text Areas and Inputs */
     textarea, input[type="text"] {
         width: 100%;
@@ -357,12 +347,10 @@ if __name__ == "__main__":
         border-radius: 5px;
         box-sizing: border-box;
     }
-
     textarea:focus, input[type="text"]:focus {
         border-color: #3498db;
         outline: none;
     }
-
     /* Terminal Output */
     .code-output {
         background-color: #1e1e1e;
@@ -371,7 +359,6 @@ if __name__ == "__main__":
         border-radius: 5px;
         font-family: 'Courier New', Courier, monospace;
     }
-
     /* Chat History */
     .chat-history {
         background-color: #ecf0f1;
@@ -380,21 +367,17 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
-
     .chat-message {
         margin-bottom: 10px;
     }
-
     .chat-message.user {
         text-align: right;
         color: #3498db;
     }
-
     .chat-message.agent {
         text-align: left;
         color: #e74c3c;
     }
-
     /* Project Management */
     .project-list {
         background-color: #ecf0f1;
@@ -403,16 +386,13 @@ if __name__ == "__main__":
         max-height: 300px;
         overflow-y: auto;
     }
-
     .project-item {
         margin-bottom: 10px;
     }
-
     .project-item a {
         color: #3498db;
         text-decoration: none;
     }
-
     .project-item a:hover {
         text-decoration: underline;
     }
