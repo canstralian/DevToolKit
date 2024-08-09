@@ -161,7 +161,7 @@ def analyze_code(code: str) -> List[str]:
 def get_code_completion(prompt: str) -> str:
     # Generate code completion based on the current code input
     # Use max_new_tokens instead of max_length
-    completions = code_generator(prompt, max_new_tokens=50, num_return_sequences=1) 
+    completions = code_generator(prompt, max_new_tokens=max_new_tokens, num_return_sequences=1) 
     return completions[0]['generated_text']
 
 def lint_code(code: str) -> List[str]:
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         if st.button("Run"):
             output = run_code(terminal_input)
             st.session_state.terminal_history.append((terminal_input, output))
-            st.code(output, language="bash")
+            st.code(output, language="bash", "java", "html","python", "solidity", "typescript", "streamlit", "gradio", "css", "xcode", "sql", "svg", "rust")
         if ai_guide_level != "No Assistance":
             st.write("Run commands here to add packages to your project. For example: pip install <package-name>.")
             if terminal_input and "install" in terminal_input:
