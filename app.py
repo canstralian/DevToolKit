@@ -80,7 +80,9 @@ I am confident that I can leverage my expertise to assist you in developing and 
         return self._hf_api.whoami(token=hf_token) is not None
 
 def process_input(input_text: str) -> str:
-    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium", clean_up_tokenization_spaces=True)
+    # Load the DialoGPT tokenizer explicitly
+    chatbot_tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium", clean_up_tokenization_spaces=True)
+    chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer=chatbot_tokenizer)
     response = chatbot(input_text, max_length=50, num_return_sequences=1)[0]['generated_text']
     return response
 
@@ -130,8 +132,10 @@ def display_ai_guide_chat(chat_history: List[tuple[str, str]]):
         st.markdown(f"<div class='chat-message agent'>{agent_message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+# Load the CodeGPT tokenizer explicitly
+code_generator_tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
 # Load the CodeGPT model for code completion
-code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer="microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
+code_generator = pipeline("text-generation", model="microsoft/CodeGPT-small-py", tokenizer=code_generator_tokenizer)
 
 def analyze_code(code: str) -> List[str]:
     hints = []
@@ -156,7 +160,8 @@ def analyze_code(code: str) -> List[str]:
 
 def get_code_completion(prompt: str) -> str:
     # Generate code completion based on the current code input
-    completions = code_generator(prompt, max_length=50, num_return_sequences=1)
+    # Use max_new_tokens instead of max_length
+    completions = code_generator(prompt, max_new_tokens=50, num_return_sequences=1) 
     return completions[0]['generated_text']
 
 def lint_code(code: str) -> List[str]:
