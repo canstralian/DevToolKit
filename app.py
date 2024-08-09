@@ -37,6 +37,7 @@ class AIAgent:
         self.name = name
         self.description = description
         self.skills = skills
+        self._hf_api = HfApi()  # Initialize HfApi here
 
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
@@ -55,7 +56,26 @@ I am confident that I can leverage my expertise to assist you in developing and 
         return summary, next_step
 
     def deploy_built_space_to_hf(self):
-        pass
+        # Assuming you have a function that generates the space content
+        space_content = generate_space_content(project_name)
+        repository = self._hf_api.create_repo(
+            repo_id=project_name, 
+            private=True,
+            token=hf_token,
+            exist_ok=True,
+            space_sdk="streamlit"
+        )
+        self._hf_api.upload_file(
+            path_or_fileobj=space_content,
+            path_in_repo="app.py",
+            repo_id=project_name,
+            repo_type="space",
+            token=hf_token
+        )
+        return repository
+
+    def has_valid_hf_token(self):
+        return self._hf_api.whoami(token=hf_token) is not None
 
 def process_input(input_text):
     chatbot = pipeline("text-generation", model="microsoft/DialoGPT-medium", tokenizer="microsoft/DialoGPT-medium")
@@ -94,6 +114,19 @@ def display_chat_history(chat_history):
 
 def display_workspace_projects(workspace_projects):
     return "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
+
+def generate_space_content(project_name):
+    # Logic to generate the Streamlit app content based on project_name
+    # ... (This is where you'll need to implement the actual code generation)
+    return "import streamlit as st\nst.title('My Streamlit App')\nst.write('Hello, world!')"
+
+# Function to display the AI Guide chat
+def display_ai_guide_chat(chat_history):
+    st.markdown("<div class='chat-history'>", unsafe_allow_html=True)
+    for user_message, agent_message in chat_history:
+        st.markdown(f"<div class='chat-message user'>{user_message}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='chat-message agent'>{agent_message}</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     st.sidebar.title("Navigation")
@@ -164,6 +197,19 @@ if __name__ == "__main__":
                 repository = agent.deploy_built_space_to_hf()
                 st.markdown("## Congratulations! Successfully deployed Space 🚀 ##")
                 st.markdown("[Check out your new Space here](hf.co/" + repository.name + ")")
+
+    # AI Guide Chat
+    if ai_guide_level != "No Assistance":
+        display_ai_guide_chat(st.session_state.chat_history)
+        # Add a text input for user to interact with the AI Guide
+        user_input = st.text_input("Ask the AI Guide a question:", key="user_input")
+        if st.button("Send"):
+            if user_input:
+                # Process the user's input and get a response from the AI Guide
+                agent_response = process_input(user_input)
+                st.session_state.chat_history.append((user_input, agent_response))
+                # Clear the user input field
+                st.session_state.user_input = ""
 
     # CSS for styling
     st.markdown("""
