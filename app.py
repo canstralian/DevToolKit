@@ -29,6 +29,16 @@ if 'workspace_projects' not in st.session_state:
 if 'available_agents' not in st.session_state:
     st.session_state.available_agents = []
 
+# Initialize the session state variable as an empty string
+st.session_state.user_input = ""
+
+# Create the text input widget
+user_input = st.text_input("Enter your text:", "Initial text")
+
+# Use the get() method to get the current value of the widget and update it
+if st.button("Update"):
+    st.session_state.user_input = user_input
+    
 # AI Guide Toggle
 ai_guide_level = st.sidebar.radio("AI Guide Level", ["Full Assistance", "Partial Assistance", "No Assistance"])
 
