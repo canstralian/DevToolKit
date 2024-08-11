@@ -12,6 +12,8 @@ docker
 opencv-python
 gradio
 cookiecutter
+transformers[all]
+huggingface-cli
 Flask-SQLAlchemy
 Flask-Login
 bs4
