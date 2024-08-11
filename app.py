@@ -10,6 +10,8 @@ from huggingface_hub import HfApi, create_repo
 import importlib
 import os
 
+
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
@@ -286,7 +288,7 @@ def run_docker_container(image_name, port):
     return container
 
 def deploy_to_hf_spaces(project_name, token):
-    api = HfApi()
+    hf_api = HfApi()
     repo_url = create_repo(project_name, repo_type="space", space_sdk="streamlit", token=token)
     api.upload_folder(
         folder_path=".",
