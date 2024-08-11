@@ -1,7 +1,6 @@
 streamlit
 huggingface-hub
-transformers
-transformers[torch]
+PyYaml
 streamlit-chat
 torch
 black
@@ -18,6 +17,5 @@ Flask-SQLAlchemy
 Flask-Login
 bs4
 GitPython
-PyYAML
 pytest
 faiss-cpu
