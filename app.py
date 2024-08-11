@@ -9,6 +9,7 @@ import docker
 from huggingface_hub import HfApi, create_repo
 import importlib
 import os
+from huggingface_hub import HfApi, create_repo
 
 hf_api = HfApi()
 
@@ -287,16 +288,16 @@ def run_docker_container(image_name, port):
     container = client.containers.run(image_name, detach=True, ports={f'{port}/tcp': port})
     return container
 
-def deploy_to_hf_spaces(project_name, token):
-    hf_api = HfApi()
-    repo_url = create_repo(project_name, repo_type="space", space_sdk="streamlit", token=token)
-    api.upload_folder(
-        folder_path=".",
-        repo_id=project_name,
-        repo_type="space",
-        token=token
-    )
-    return repo_url
+def deploy_space_to_hf(project_name, hf_token):
+    repository_name = f"my-awesome-space_{datetime.now().timestamp()}"
+    files = get_built_space_files()
+    commit_response = deploy_to_git(project_name, repository_name, files)
+    if commit_response:
+        api = HfApi(token=hf_token)  # Corrected import statement
+        api.create(repository_name, files=files, push_to_hub=True)
+        return f"Space '{repository_name}' deployed successfully."
+    else:
+        return "Failed to commit changes to Space."
 
 if __name__ == "__main__":
     db.create_all()  # Create the database tables if they don't exist
