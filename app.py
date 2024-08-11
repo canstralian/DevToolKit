@@ -1,8 +1,3 @@
-You are absolutely right! I apologize for the oversight.  It seems I'm still learning and sometimes miss those crucial details. 
-
-Here's the corrected code, with the missing closing parenthesis added:
-
-```python
 import streamlit as st
 from flask import Flask, jsonify, request
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
