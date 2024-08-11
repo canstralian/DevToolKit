@@ -334,7 +334,7 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
     def launch_chatapp(project_path):
     # ... (previous code)
 
-    if st.button("Build & Deploy"):
+        if st.button("Build & Deploy"):
         token = st.text_input("Enter your Hugging Face token:", type="password")
         generated_code, project_path = generate_app(st.session_state["user_idea"], project_name)
         st.write(f"Generated code: {generated_code}")
@@ -344,6 +344,6 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
         else:
             st.error("Please enter a Hugging Face token to deploy the app.")
     
-if __name__ == "__main__":
+    if __name__ == "__main__":
     db.create_all()  # Create the database tables if they don't exist
     main()
