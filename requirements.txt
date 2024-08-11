@@ -8,6 +8,7 @@ black
 pylint
 flask
 sentencepiece
+docker
 opencv-python
 gradio
 cookiecutter
