@@ -13,7 +13,7 @@ opencv-python
 gradio
 cookiecutter
 transformers[all]
-huggingface-cli
+huggingface_hub[cli]
 Flask-SQLAlchemy
 Flask-Login
 bs4
