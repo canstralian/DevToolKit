@@ -6,6 +6,7 @@ streamlit-chat
 torch
 black
 pylint
+flask
 sentencepiece
 opencv-python
 gradio
