@@ -332,18 +332,45 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
     os.remove(temp_file)
 
     def launch_chatapp(project_path):
-    # ... (previous code)
+    if st.button("Launch ChatApp"):
+        st.write("Launching ChatApp...")
+        os.chdir(project_path)
+        subprocess.run(["python", "app.py"])
+        st.write("ChatApp launched successfully!")
 
-        if st.button("Build & Deploy"):
-        token = st.text_input("Enter your Hugging Face token:", type="password")
-        generated_code, project_path = generate_app(st.session_state["user_idea"], project_name)
-        st.write(f"Generated code: {generated_code}")
-        if token:
-            deploy_app_to_hf_spaces(project_name, token, generated_code)
-            st.success("App deployed to Hugging Face Spaces!")
-        else:
-            st.error("Please enter a Hugging Face token to deploy the app.")
-    
-    if __name__ == "__main__":
+if __name__ == "__main__":
+    db.create_all()  # Create the database tables if they don't exist
+    main()
+
+    def generate_app(user_idea, project_name):
+        # Extract key information from the user idea
+        summary = nlp_pipeline(user_idea, max_length=50, min_length=10)[0]["summary_text"]
+
+        # Create project directory if it doesn't exist
+        project_path = create_project(project_name)
+
+        # Generate code using Codex
+        prompt = f"Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."
+        generated_code = codex_pipeline(prompt)[0]['generated_text']
+
+        # Save the generated code to a file in the project directory
+        with open(os.path.join(project_path, "app.py"), "w") as f:
+            f.write(generated_code)
+
+        # Upload the file to Hugging Face Spaces
+        api = HfApi()
+        repo_id = create_repo(api, project_name)["repo_id"]
+        temp_file = "temp_code.py"
+        with open(temp_file, "w") as f:
+            f.write(generated_code)
+        api.upload_files(repo_id, [temp_file], api.api_key)
+
+        # Delete the temporary file
+        os.remove(temp_file)
+
+        # Launch the app
+        launch_chatapp(project_path)
+
+if __name__ == "__main__":
     db.create_all()  # Create the database tables if they don't exist
     main()
