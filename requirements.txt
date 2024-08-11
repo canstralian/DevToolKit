@@ -1,6 +1,6 @@
 streamlit
 huggingface-hub
-PyYaml
+PyYaml==6.0.2
 streamlit-chat
 torch
 black
