@@ -11,6 +11,7 @@ sentencepiece
 opencv-python
 gradio
 cookiecutter
+Flask-Login
 bs4
 GitPython
 PyYAML
