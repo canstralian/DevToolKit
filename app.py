@@ -10,7 +10,7 @@ from huggingface_hub import HfApi, create_repo
 import importlib
 import os
 
-
+hf_api = HfApi()
 
 # Initialize Flask app
 app = Flask(__name__)
