@@ -299,12 +299,12 @@ def generate_app(user_idea, project_name):
     project_path = create_project(project_name)
 
     # Generate code using Codex
-    prompt = f"Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."
+    prompt = f"""Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."""
     generated_code = codex_pipeline(prompt)[0]['generated_text']
 
     # Save the generated code to a file in the project directory
     with open(os.path.join(project_path, "app.py"), "w") as f:
-        f.write(generated_code)
+        f"""write(generated_code)"""
 
     # Deploy the app to Hugging Face Spaces
     deploy_app_to_hf_spaces(project_name, token, generated_code)
@@ -312,7 +312,7 @@ def generate_app(user_idea, project_name):
     return generated_code, project_path
 
 def deploy_app_to_hf_spaces(project_name, token, generated_code):
-    repo_name = f"hf-{project_name}"
+    repo_name = f"""hf-{project_name}"""
     repo_id = hf_api.changelog.get_repo_id(repo_name)
 
     if not repo_id:
@@ -323,7 +323,7 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
 
     temp_file = "temp_code.py"
     with open(temp_file, "w") as f:
-        f.write(generated_code)
+        f"""write(generated_code)"""
 
     # Upload the file to Hugging Face Spaces
     api.upload_files(repo_id, [temp_file], token)
@@ -333,10 +333,10 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
 
     def launch_chatapp(project_path):
         if st.button("Launch ChatApp"):
-        st.write("Launching ChatApp...")
-        os.chdir(project_path)
-        subprocess.run(["python", "app.py"])
-        st.write("ChatApp launched successfully!")
+            st.write("Launching ChatApp...")
+            os.chdir(project_path)
+            subprocess.run(["python", "app.py"])
+            st.write("ChatApp launched successfully!")
 
     def generate_app(user_idea, project_name):
         # Extract key information from the user idea
@@ -351,14 +351,14 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
 
         # Save the generated code to a file in the project directory
         with open(os.path.join(project_path, "app.py"), "w") as f:
-            f.write(generated_code)
+            f"""write(generated_code)"""
 
         # Upload the file to Hugging Face Spaces
         api = HfApi()
         repo_id = create_repo(api, project_name)["repo_id"]
         temp_file = "temp_code.py"
         with open(temp_file, "w") as f:
-            f.write(generated_code)
+            f"""write(generated_code)"""
         api.upload_files(repo_id, [temp_file], api.api_key)
 
         # Delete the temporary file
