@@ -10,9 +10,11 @@ from huggingface_hub import HfApi, create_repo
 import importlib
 import os
 from huggingface_hub import HfApi, create_repo
-from transformers import pipeline
-codex_pipeline = pipeline("code-generation", model="EleutherAI/code-davinci-002")
+from transformers import AutoModelForSequenceClassification, pipeline
 import huggingface_cli
+
+model = AutoModelForSequenceClassification.from_pretrained("EleutherAI/code-davinci-002")
+codex_pipeline = pipeline("code-generation", model="EleutherAI/code-davinci-002")
 
 hf_api = HfApi()
 
