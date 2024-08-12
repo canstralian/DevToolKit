@@ -9,6 +9,9 @@ pylint
 flask
 sentencepiece
 docker
+torch
+tensor
+tensorrt-cu12
 opencv-python
 gradio
 cookiecutter
