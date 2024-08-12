@@ -83,8 +83,8 @@ def get_projects():
 
 # Plugin system
 class PluginManager:
-    def __init__(self, plugin_dir):
-        self.plugin_dir = plugin_dir
+    def __init__(self):
+        self.plugin_dir = './plugins' 
         self.plugins = {}
 
     def load_plugins(self):
@@ -114,7 +114,7 @@ class ExamplePlugin:
     def run(self, input_data):
         return f"Plugin processed: {input_data}"
 
-plugin_manager = PluginManager('./plugins')
+plugin_manager = PluginManager()
 plugin_manager.load_plugins()
 
 # AI Assistant
