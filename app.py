@@ -332,15 +332,11 @@ def deploy_app_to_hf_spaces(project_name, token, generated_code):
     os.remove(temp_file)
 
     def launch_chatapp(project_path):
-    if st.button("Launch ChatApp"):
+        if st.button("Launch ChatApp"):
         st.write("Launching ChatApp...")
         os.chdir(project_path)
         subprocess.run(["python", "app.py"])
         st.write("ChatApp launched successfully!")
-
-if __name__ == "__main__":
-    db.create_all()  # Create the database tables if they don't exist
-    main()
 
     def generate_app(user_idea, project_name):
         # Extract key information from the user idea
