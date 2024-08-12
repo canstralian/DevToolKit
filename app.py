@@ -9,25 +9,18 @@ import docker
 from huggingface_hub import HfApi, create_repo
 import importlib
 import os
-from huggingface_hub import HfApi, create_repo
 from transformers import AutoModelForSequenceClassification, pipeline
 import huggingface_cli
 
-model = AutoModelForSequenceClassification.from_pretrained("EleutherAI/code-davinci-002")
-codex_pipeline = pipeline("code-generation", model="EleutherAI/code-davinci-002")
-
-hf_api = HfApi()
-
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['SECRET_KEY'] = 'your-secret-key'  # Replace with a strong secret key
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 
-# User and Project models (as defined earlier)
-
+# User and Project models
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
@@ -43,8 +36,7 @@ class Project(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Authentication routes (as defined earlier)
-
+# Authentication routes
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -114,7 +106,6 @@ class PluginManager:
         return list(self.plugins.keys())
 
 # Example plugin
-# save this as a .py file in your plugin directory
 def register_plugin():
     return ExamplePlugin()
 
@@ -126,6 +117,61 @@ class ExamplePlugin:
 
 plugin_manager = PluginManager('./plugins')
 plugin_manager.load_plugins()
+
+# AI Assistant
+model = AutoModelForSequenceClassification.from_pretrained("EleutherAI/code-davinci-002")
+codex_pipeline = pipeline("code-generation", model=model)
+
+hf_api = HfApi()
+
+def generate_app(user_idea, project_name):
+    # Extract key information from the user idea
+    # (You might want to use a more sophisticated NLP pipeline here)
+    summary = user_idea  # For now, just use the user's input
+
+    # Create project directory if it doesn't exist
+    project_path = create_project(project_name)
+
+    # Generate code using Codex
+    prompt = f"""Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."""
+    generated_code = codex_pipeline(prompt)[0]['generated_text']
+
+    # Save the generated code to a file in the project directory
+    with open(os.path.join(project_path, "app.py"), "w") as f:
+        f.write(generated_code)
+
+    # Deploy the app to Hugging Face Spaces
+    deploy_app_to_hf_spaces(project_name, generated_code)
+
+    return generated_code, project_path
+
+def deploy_app_to_hf_spaces(project_name, generated_code):
+    repo_name = f"hf-{project_name}"
+    repo_id = hf_api.changelog.get_repo_id(repo_name)
+
+    if not repo_id:
+        create_repo(hf_api, repo_name, "public", "Streamlit App")
+        repo_id = hf_api.changelog.get_repo_id(repo_name)
+
+    # Save the generated code to a temporary file
+    temp_file = "temp_code.py"
+    with open(temp_file, "w") as f:
+        f.write(generated_code)
+
+    # Upload the file to Hugging Face Spaces
+    hf_api.upload_files(repo_id, [temp_file], hf_api.api_key)
+
+    # Delete the temporary file
+    os.remove(temp_file)
+
+    # Print success message
+    st.write(f"App deployed successfully to Hugging Face Spaces: https://huggingface.co/spaces/{repo_name}")
+
+def create_project(project_name):
+    project_path = os.path.join(os.getcwd(), project_name)
+    if not os.path.exists(project_path):
+        os.makedirs(project_path)
+    return project_path
 
 def main():
     st.sidebar.title("AI-Guided Development")
@@ -225,7 +271,13 @@ def build_and_deploy_page():
 @login_required
 def ai_assistant_page():
     st.header("AI Assistant")
-    # AI assistant code (as before)
+    user_idea = st.text_area("Describe your app idea:")
+    project_name = st.text_input("Enter project name:")
+
+    if st.button("Generate App"):
+        generated_code, project_path = generate_app(user_idea, project_name)
+        st.code(generated_code)
+        st.write(f"Project directory: {project_path}")
 
 @login_required
 def plugins_page():
@@ -292,82 +344,6 @@ def run_docker_container(image_name, port):
     client = docker.from_env()
     container = client.containers.run(image_name, detach=True, ports={f'{port}/tcp': port})
     return container
-
-def generate_app(user_idea, project_name):
-    # Extract key information from the user idea
-    summary = nlp_pipeline(user_idea, max_length=50, min_length=10)[0]["summary_text"]
-
-    # Create project directory if it doesn't exist
-    project_path = create_project(project_name)
-
-    # Generate code using Codex
-    prompt = f"""Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."""
-    generated_code = codex_pipeline(prompt)[0]['generated_text']
-
-    # Save the generated code to a file in the project directory
-    with open(os.path.join(project_path, "app.py"), "w") as f:
-        f"""write(generated_code)"""
-
-    # Deploy the app to Hugging Face Spaces
-    deploy_app_to_hf_spaces(project_name, token, generated_code)
-
-    return generated_code, project_path
-
-def deploy_app_to_hf_spaces(project_name, token, generated_code):
-    repo_name = f"""hf-{project_name}"""
-    repo_id = hf_api.changelog.get_repo_id(repo_name)
-
-    if not repo_id:
-        create_repo = huggingface_cli.create_repo(repo_name, "public", "Streamlit App", token)
-        repo_id = create_repo["repo_id"]
-
-    # Save the generated code to a temporary file
-
-    temp_file = "temp_code.py"
-    with open(temp_file, "w") as f:
-        f"""write(generated_code)"""
-
-    # Upload the file to Hugging Face Spaces
-    api.upload_files(repo_id, [temp_file], token)
-
-    # Delete the temporary file
-    os.remove(temp_file)
-
-    def launch_chatapp(project_path):
-        if st.button("Launch ChatApp"):
-            st.write("Launching ChatApp...")
-            os.chdir(project_path)
-            subprocess.run(["python", "app.py"])
-            st.write("ChatApp launched successfully!")
-
-    def generate_app(user_idea, project_name):
-        # Extract key information from the user idea
-        summary = nlp_pipeline(user_idea, max_length=50, min_length=10)[0]["summary_text"]
-
-        # Create project directory if it doesn't exist
-        project_path = create_project(project_name)
-
-        # Generate code using Codex
-        prompt = f"Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."
-        generated_code = codex_pipeline(prompt)[0]['generated_text']
-
-        # Save the generated code to a file in the project directory
-        with open(os.path.join(project_path, "app.py"), "w") as f:
-            f"""write(generated_code)"""
-
-        # Upload the file to Hugging Face Spaces
-        api = HfApi()
-        repo_id = create_repo(api, project_name)["repo_id"]
-        temp_file = "temp_code.py"
-        with open(temp_file, "w") as f:
-            f"""write(generated_code)"""
-        api.upload_files(repo_id, [temp_file], api.api_key)
-
-        # Delete the temporary file
-        os.remove(temp_file)
-
-        # Launch the app
-        launch_chatapp(project_path)
 
 if __name__ == "__main__":
     db.create_all()  # Create the database tables if they don't exist
