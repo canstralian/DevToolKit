@@ -10,7 +10,6 @@ from huggingface_hub import HfApi, create_repo
 import importlib
 import os
 from transformers import AutoModelForSequenceClassification, pipeline
-import huggingface_cli
 
 # Initialize Flask app
 app = Flask(__name__)
