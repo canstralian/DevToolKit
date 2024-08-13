@@ -351,5 +351,6 @@ def run_docker_container(image_name, port):
     return container
 
 if __name__ == "__main__":
-    db.create_all()  # Create the database tables if they don't exist
-    main()
+    with app.app_context():
+        db.create_all()  # Create the database tables if they don't exist
+    app.run()
