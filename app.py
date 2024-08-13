@@ -118,7 +118,7 @@ plugin_manager = PluginManager()
 plugin_manager.load_plugins()
 
 # AI Assistant
-model = AutoModelForSequenceClassification.from_pretrained("EleutherAI/code-davinci-002")
+model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")
 codex_pipeline = pipeline("code-generation", model=model)
 
 hf_api = HfApi()
