@@ -9,7 +9,16 @@ import docker
 from huggingface_hub import HfApi, create_repo
 import importlib
 import os
-from transformers import pipeline, AutoModelForSequenceClassification
+from transformers import AutoModelForSequenceClassification, pipeline, AutoTokenizer
+
+   # Load the tokenizer explicitly
+   tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
+
+   # Initialize the model
+   model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
+
+   # Initialize the pipeline
+   code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Initialize Flask app
 app = Flask(__name__)
