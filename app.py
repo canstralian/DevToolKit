@@ -9,7 +9,7 @@ import docker
 from huggingface_hub import HfApi, create_repo
 import importlib
 import os
-from transformers import AutoModelForSequenceClassification, pipeline, AutoTokenizer
+from transformers import AutoModelForCausalLM, pipeline, AutoTokenizer
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -121,15 +121,12 @@ plugin_manager.load_plugins()
 tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
 
 # Initialize the model
-model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
+model = AutoModelForCausalLM.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
 
 # Initialize the pipeline
 code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # AI Assistant
-model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")
-codex_pipeline = pipeline("text-generation", model=model)
-
 hf_api = HfApi()
 
 def generate_app(user_idea, project_name):
@@ -142,7 +139,7 @@ def generate_app(user_idea, project_name):
 
     # Generate code using Codex
     prompt = f"""Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."""
-    generated_code = codex_pipeline(prompt, max_length=516)[0]['generated_text']
+    generated_code = code_generator(prompt, max_length=516)[0]['generated_text']
 
     # Save the generated code to a file in the project directory
     with open(os.path.join(project_path, "app.py"), "w") as f:
