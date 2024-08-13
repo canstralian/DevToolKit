@@ -11,15 +11,6 @@ import importlib
 import os
 from transformers import AutoModelForSequenceClassification, pipeline, AutoTokenizer
 
-# Load the tokenizer explicitly
-tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
-
-# Initialize the model
-model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
-
-# Initialize the pipeline
-code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'  # Replace with a strong secret key
@@ -125,6 +116,15 @@ class ExamplePlugin:
 
 plugin_manager = PluginManager()
 plugin_manager.load_plugins()
+
+# Load the tokenizer explicitly
+tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
+
+# Initialize the model
+model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
+
+# Initialize the pipeline
+code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # AI Assistant
 model = AutoModelForSequenceClassification.from_pretrained("microsoft/CodeGPT-small-py")
