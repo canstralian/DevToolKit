@@ -9,6 +9,7 @@ pylint
 flask
 sentencepiece
 docker
+python-dotenv
 torch
 tensor
 tensorrt-cu12
