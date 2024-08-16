@@ -263,7 +263,7 @@ def build_and_deploy_page():
         st.write(f"Docker image built: {image.tags}")
     
     if st.button("Run Docker Container"):
-        port = st.number_input("Enter port number:", value=8501)
+        port = st.number_input("Enter port number:", value=8080)
         container = run_docker_container(project_name, port)
         st.write(f"Docker container running: {container.id}")
     
