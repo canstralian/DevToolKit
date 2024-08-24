@@ -1,5 +1,5 @@
 streamlit
-huggingface-hub
+huggingface-hub==0.24.6
 PyYaml==6.0.2
 streamlit-chat
 torch
