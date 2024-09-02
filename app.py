@@ -129,6 +129,33 @@ code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
 # AI Assistant
 hf_api = HfApi()
 
+def model_menu():
+    models = ["distilbert", "t5", "codellama-7b", "geminai-1.5b"]
+    selected_model = st.sidebar.selectbox("Select a model:", models)
+
+    # Add the code snippet here
+    try:
+        if selected_model == "distilbert":
+            model = pipeline("text-generation", model="distilbert-base-uncased")
+        elif selected_model == "t5":
+            model = pipeline("text-generation", model="t5-base")
+        elif selected_model == "codellama-7b":
+            model = AutoModelForSeq2SeqLM.from_pretrained("codegen-7B-mono")
+            tokenizer = AutoTokenizer.from_pretrained("codegen-7B-mono")
+            model = pipeline("text-generation", model=model, tokenizer=tokenizer)
+        elif selected_model == "geminai-1.5b":
+            model = AutoModelForSeq2SeqLM.from_pretrained("geminai-1.5b")
+            tokenizer = AutoTokenizer.from_pretrained("geminai-1.5b")
+            model = pipeline("text-generation", model=model, tokenizer=tokenizer)
+        else:
+            raise ValueError("Invalid model name")
+        return model
+    except Exception as e:
+        logging.error(f"Error importing model: {e}")
+        return None
+
+    return selected_model 
+
 def generate_app(user_idea, project_name):
     # Extract key information from the user idea
     # (You might want to use a more sophisticated NLP pipeline here)
