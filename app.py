@@ -1,383 +1,436 @@
-import streamlit as st
-from flask import Flask, jsonify, request
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-import pdb
-import subprocess
-import docker
-from huggingface_hub import HfApi, create_repo
-import importlib
 import os
-from transformers import AutoModelForCausalLM, pipeline, AutoTokenizer
+import subprocess
+import streamlit as st
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+import black
+from pylint import lint
+from io import StringIO
 
-# Initialize Flask app
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'  # Replace with a strong secret key
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
+HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
+PROJECT_ROOT = "projects"
+AGENT_DIRECTORY = "agents"
 
-# User and Project models
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), unique=True, nullable=False)
-    password_hash = db.Column(db.String(100), nullable=False)
-    projects = db.relationship('Project', backref='user', lazy=True)
+# Global state to manage communication between Tool Box and Workspace Chat App
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'terminal_history' not in st.session_state:
+    st.session_state.terminal_history = []
+if 'workspace_projects' not in st.session_state:
+    st.session_state.workspace_projects = {}
+if 'available_agents' not in st.session_state:
+    st.session_state.available_agents = []
+if 'current_state' not in st.session_state:
+    st.session_state.current_state = {
+        'toolbox': {},
+        'workspace_chat': {}
+    }
 
-class Project(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+class AIAgent:
+    def __init__(self, name, description, skills):
+        self.name = name
+        self.description = description
+        self.skills = skills
 
-# Authentication routes
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    if User.query.filter_by(username=username).first():
-        return jsonify({'message': 'Username already exists'}), 400
-    new_user = User(username=username, password_hash=generate_password_hash(password))
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify({'message': 'User registered successfully'}), 201
+    def create_agent_prompt(self):
+        skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
+        agent_prompt = f"""
+As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
+{skills_str}
+I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
+"""
+        return agent_prompt
 
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    user = User.query.filter_by(username=username).first()
-    if user and check_password_hash(user.password_hash, password):
-        login_user(user)
-        return jsonify({'message': 'Logged in successfully'}), 200
-    return jsonify({'message': 'Invalid username or password'}), 401
+    def autonomous_build(self, chat_history, workspace_projects):
+        """
+        Autonomous build logic that continues based on the state of chat history and workspace projects.
+        This is a placeholder and needs to be implemented based on your specific needs.
+        """
+        summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
+        summary += "\n\nWorkspace Projects:\n" + "\n".join(
+            [f"{p}: {details}" for p, details in workspace_projects.items()])
 
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return jsonify({'message': 'Logged out successfully'}), 200
+        next_step = "Based on the current state, the next logical step is to implement the main application logic."
 
-@app.route('/create_project', methods=['POST'])
-@login_required
-def create_project():
-    data = request.get_json()
-    project_name = data.get('project_name')
-    new_project = Project(name=project_name, user_id=current_user.id)
-    db.session.add(new_project)
-    db.session.commit()
-    return jsonify({'message': 'Project created successfully'}), 201
+        return summary, next_step
 
-@app.route('/get_projects')
-@login_required
-def get_projects():
-    projects = Project.query.filter_by(user_id=current_user.id).all()
-    return jsonify({'projects': [project.name for project in projects]}), 200
 
-# Plugin system
-class PluginManager:
-    def __init__(self):
-        self.plugin_dir = './plugins' 
-        self.plugins = {}
+def save_agent_to_file(agent):
+    """Saves the agent's prompt to a file locally and then commits to the Hugging Face repository."""
+    if not os.path.exists(AGENT_DIRECTORY):
+        os.makedirs(AGENT_DIRECTORY)
+    file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
+    config_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}Config.txt")
+    with open(file_path, "w") as file:
+        file.write(agent.create_agent_prompt())
+    with open(config_path, "w") as file:
+        file.write(f"Agent Name: {agent.name}\nDescription: {agent.description}")
+    st.session_state.available_agents.append(agent.name)
 
-    def load_plugins(self):
-        for filename in os.listdir(self.plugin_dir):
-            if filename.endswith('.py'):
-                module_name = filename[:-3]
-                spec = importlib.util.spec_from_file_location(module_name, os.path.join(self.plugin_dir, filename))
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                if hasattr(module, 'register_plugin'):
-                    plugin = module.register_plugin()
-                    self.plugins[plugin.name] = plugin
+    commit_and_push_changes(f"Add agent {agent.name}")
 
-    def get_plugin(self, name):
-        return self.plugins.get(name)
 
-    def list_plugins(self):
-        return list(self.plugins.keys())
-
-# Example plugin
-def register_plugin():
-    return ExamplePlugin()
-
-class ExamplePlugin:
-    name = "example_plugin"
-
-    def run(self, input_data):
-        return f"Plugin processed: {input_data}"
-
-plugin_manager = PluginManager()
-plugin_manager.load_plugins()
-
-# Load the tokenizer explicitly
-tokenizer = AutoTokenizer.from_pretrained("microsoft/CodeGPT-small-py", clean_up_tokenization_spaces=True)
-
-# Initialize the model
-model = AutoModelForCausalLM.from_pretrained("microsoft/CodeGPT-small-py")  # Use a public model
-
-# Initialize the pipeline
-code_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
-# AI Assistant
-hf_api = HfApi()
-
-def model_menu():
-    models = ["distilbert", "t5", "codellama-7b", "geminai-1.5b"]
-    selected_model = st.sidebar.selectbox("Select a model:", models)
-
-    # Add the code snippet here
-    try:
-        if selected_model == "distilbert":
-            model = pipeline("text-generation", model="distilbert-base-uncased")
-        elif selected_model == "t5":
-            model = pipeline("text-generation", model="t5-base")
-        elif selected_model == "codellama-7b":
-            model = AutoModelForSeq2SeqLM.from_pretrained("codegen-7B-mono")
-            tokenizer = AutoTokenizer.from_pretrained("codegen-7B-mono")
-            model = pipeline("text-generation", model=model, tokenizer=tokenizer)
-        elif selected_model == "geminai-1.5b":
-            model = AutoModelForSeq2SeqLM.from_pretrained("geminai-1.5b")
-            tokenizer = AutoTokenizer.from_pretrained("geminai-1.5b")
-            model = pipeline("text-generation", model=model, tokenizer=tokenizer)
-        else:
-            raise ValueError("Invalid model name")
-        return model
-    except Exception as e:
-        logging.error(f"Error importing model: {e}")
+def load_agent_prompt(agent_name):
+    """Loads an agent prompt from a file."""
+    file_path = os.path.join(AGENT_DIRECTORY, f"{agent_name}.txt")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as file:
+            agent_prompt = file.read()
+        return agent_prompt
+    else:
         return None
 
-    return selected_model 
 
-def generate_app(user_idea, project_name):
-    # Extract key information from the user idea
-    # (You might want to use a more sophisticated NLP pipeline here)
-    summary = user_idea  # For now, just use the user's input
+def create_agent_from_text(name, text):
+    skills = text.split('\n')
+    agent = AIAgent(name, "AI agent created from text input.", skills)
+    save_agent_to_file(agent)
+    return agent.create_agent_prompt()
 
-    # Create project directory if it doesn't exist
-    project_path = create_project(project_name)
 
-    # Generate code using Codex
-    prompt = f"""Create a simple Streamlit app for the project named '{project_name}'. The app should display the following summary: '{summary}'."""
-    generated_code = code_generator(prompt, max_length=516)[0]['generated_text']
+# Chat interface using a selected agent
+def chat_interface_with_agent(input_text, agent_name):
+    agent_prompt = load_agent_prompt(agent_name)
+    if agent_prompt is None:
+        return f"Agent {agent_name} not found."
 
-    # Save the generated code to a file in the project directory
-    with open(os.path.join(project_path, "app.py"), "w") as f:
-        f.write(generated_code)
+    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    model_name = "gpt2"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
 
-    # Deploy the app to Hugging Face Spaces
-    deploy_app_to_hf_spaces(project_name, generated_code)
+    # Combine the agent prompt with user input
+    combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
 
-    return generated_code, project_path
+    # Truncate input text to avoid exceeding the model's maximum length
+    max_input_length = 900
+    input_ids = tokenizer.encode(combined_input, return_tensors="pt")
+    if input_ids.shape[1] > max_input_length:
+        input_ids = input_ids[:, :max_input_length]
 
-def deploy_app_to_hf_spaces(project_name, generated_code):
-    repo_name = f"hf-{project_name}"
-    repo_id = hf_api.changelog.get_repo_id(repo_name)
+    # Generate chatbot response
+    outputs = model.generate(
+        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True,
+        pad_token_id=tokenizer.eos_token_id  # Set pad_token_id to eos_token_id
+    )
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
 
-    if not repo_id:
-        create_repo(hf_api, repo_name, "public", "Streamlit App")
-        repo_id = hf_api.changelog.get_repo_id(repo_name)
 
-    # Save the generated code to a temporary file
-    temp_file = "temp_code.py"
-    with open(temp_file, "w") as f:
-        f.write(generated_code)
+# Basic chat interface (no agent)
+def chat_interface(input_text):
+    # Load the GPT-2 model
+    model_name = "gpt2"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
 
-    # Upload the file to Hugging Face Spaces
-    hf_api.upload_files(repo_id, [temp_file], hf_api.api_key)
+    # Generate chatbot response
+    outputs = generator(input_text, max_new_tokens=50, num_return_sequences=1, do_sample=True)
+    response = outputs[0]['generated_text']
+    return response
 
-    # Delete the temporary file
-    os.remove(temp_file)
 
-    # Print success message
-    st.write(f"App deployed successfully to Hugging Face Spaces: https://huggingface.co/spaces/{repo_name}")
-
-def create_project(project_name):
-    project_path = os.path.join(os.getcwd(), project_name)
+def workspace_interface(project_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if not os.path.exists(PROJECT_ROOT):
+        os.makedirs(PROJECT_ROOT)
     if not os.path.exists(project_path):
         os.makedirs(project_path)
-    return project_path
-
-def main():
-    st.sidebar.title("AI-Guided Development")
-    app_mode = st.sidebar.selectbox("Choose the app mode", 
-                                    ["Home", "Login/Register", "File Explorer", "Code Editor", "Terminal", 
-                                     "Build & Deploy", "AI Assistant", "Plugins"])
-
-    # AI Guide Toggle
-    ai_guide_level = st.sidebar.radio("AI Guide Level", ["Full Assistance", "Partial Assistance", "No Assistance"])
-
-    if app_mode == "Home":
-        st.title("Welcome to AI-Guided Development")
-        st.write("Select a mode from the sidebar to get started.")
-
-    elif app_mode == "Login/Register":
-        login_register_page()
-
-    elif app_mode == "File Explorer":
-        file_explorer_page()
-
-    elif app_mode == "Code Editor":
-        code_editor_page()
-
-    elif app_mode == "Terminal":
-        terminal_page()
-
-    elif app_mode == "Build & Deploy":
-        build_and_deploy_page()
-
-    elif app_mode == "AI Assistant":
-        ai_assistant_page()
-
-    elif app_mode == "Plugins":
-        plugins_page()
-
-@login_required
-def file_explorer_page():
-    st.header("File Explorer")
-    # File explorer code (as before)
-
-@login_required
-def code_editor_page():
-    st.header("Code Editor")
-    # Code editor with Monaco integration
-    st.components.v1.html(
-        """
-        <div id="monaco-editor" style="width:800px;height:600px;border:1px solid grey"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/loader.min.js"></script>
-        <script>
-            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs' }});
-            require(['vs/editor/editor.main'], function() {
-                var editor = monaco.editor.create(document.getElementById('monaco-editor'), {
-                    value: 'print("Hello, World!")',
-                    language: 'python'
-                });
-            });
-        </script>
-        """,
-        height=650,
-    )
-    
-    if st.button("Run Code"):
-        code = st.session_state.get('code', '')  # Get code from Monaco editor
-        output = run_code(code)
-        st.code(output)
-    
-    if st.button("Debug Code"):
-        code = st.session_state.get('code', '')
-        st.write("Debugging mode activated. Check your console for the debugger.")
-        debug_code(code)
-
-@login_required
-def terminal_page():
-    st.header("Terminal")
-    # Terminal code (as before)
-
-@login_required
-def build_and_deploy_page():
-    st.header("Build & Deploy")
-    project_name = st.text_input("Enter project name:")
-    
-    if st.button("Build Docker Image"):
-        image, logs = build_docker_image(project_name)
-        st.write(f"Docker image built: {image.tags}")
-    
-    if st.button("Run Docker Container"):
-        port = st.number_input("Enter port number:", value=8080)
-        container = run_docker_container(project_name, port)
-        st.write(f"Docker container running: {container.id}")
-    
-    if st.button("Deploy to Hugging Face Spaces"):
-        token = st.text_input("Enter your Hugging Face token:", type="password")
-        if token:
-            repo_url = deploy_to_hf_spaces(project_name, token)
-            st.write(f"Deployed to Hugging Face Spaces: {repo_url}")
-
-@login_required
-def ai_assistant_page():
-    st.header("AI Assistant")
-    user_idea = st.text_area("Describe your app idea:")
-    project_name = st.text_input("Enter project name:")
-
-    if st.button("Generate App"):
-        generated_code, project_path = generate_app(user_idea, project_name)
-        st.code(generated_code)
-        st.write(f"Project directory: {project_path}")
-
-@login_required
-def plugins_page():
-    st.header("Plugins")
-    st.write("Available plugins:")
-    for plugin_name in plugin_manager.list_plugins():
-        st.write(f"- {plugin_name}")
-    
-    selected_plugin = st.selectbox("Select a plugin to run:", plugin_manager.list_plugins())
-    input_data = st.text_input("Enter input for the plugin:")
-    
-    if st.button("Run Plugin"):
-        plugin = plugin_manager.get_plugin(selected_plugin)
-        if plugin:
-            result = plugin.run(input_data)
-            st.write(f"Plugin output: {result}")
-
-def login_register_page():
-    st.header("Login/Register")
-    action = st.radio("Choose action:", ["Login", "Register"])
-    
-    username = st.text_input("Username:")
-    password = st.text_input("Password:", type="password")
-    
-    if action == "Login":
-        if st.button("Login"):
-            user = User.query.filter_by(username=username).first()
-            if user and check_password_hash(user.password_hash, password):
-                login_user(user)
-                st.success("Logged in successfully!")
-            else:
-                st.error("Invalid username or password")
+        st.session_state.workspace_projects[project_name] = {"files": []}
+        st.session_state.current_state['workspace_chat']['project_name'] = project_name
+        commit_and_push_changes(f"Create project {project_name}")
+        return f"Project {project_name} created successfully."
     else:
-        if st.button("Register"):
-            if User.query.filter_by(username=username).first():
-                st.error("Username already exists")
-            else:
-                new_user = User(username=username, password_hash=generate_password_hash(password))
-                db.session.add(new_user)
-                db.session.commit()
-                st.success("User registered successfully!")
+        return f"Project {project_name} already exists."
 
-def debug_code(code):
-    try:
-        pdb.run(code)
-    except Exception as e:
-        return str(e)
 
-def run_code(code):
-    try:
-        result = subprocess.run(['python', '-c', code], capture_output=True, text=True, timeout=10)
+def add_code_to_workspace(project_name, code, file_name):
+    project_path = os.path.join(PROJECT_ROOT, project_name)
+    if os.path.exists(project_path):
+        file_path = os.path.join(project_path, file_name)
+        with open(file_path, "w") as file:
+            file.write(code)
+        st.session_state.workspace_projects[project_name]["files"].append(file_name)
+        st.session_state.current_state['workspace_chat']['added_code'] = {"file_name": file_name, "code": code}
+        commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
+        return f"Code added to {file_name} in project {project_name} successfully."
+    else:
+        return f"Project {project_name} does not exist."
+
+
+def terminal_interface(command, project_name=None):
+    if project_name:
+        project_path = os.path.join(PROJECT_ROOT, project_name)
+        if not os.path.exists(project_path):
+            return f"Project {project_name} does not exist."
+        result = subprocess.run(command, cwd=project_path, shell=True, capture_output=True, text=True)
+    else:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if result.returncode == 0:
+        st.session_state.current_state['toolbox']['terminal_output'] = result.stdout
         return result.stdout
-    except subprocess.TimeoutExpired:
-        return "Code execution timed out"
+    else:
+        st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
+        return result.stderr
+
+
+def summarize_text(text):
+    summarizer = pipeline("summarization")
+    summary = summarizer(text, max_length=100, min_length=25, do_sample=False)
+    st.session_state.current_state['toolbox']['summary'] = summary[0]['summary_text']
+    return summary[0]['summary_text']
+
+
+def sentiment_analysis(text):
+    analyzer = pipeline("sentiment-analysis")
+    sentiment = analyzer(text)
+    st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
+    return sentiment[0]
+
+
+def code_editor_interface(code):
+    """Formats and lints Python code using black and pylint."""
+    try:
+        formatted_code = black.format_str(code, mode=black.FileMode())
+        lint_result = StringIO()
+        lint.Run([
+            '--disable=C0114,C0115,C0116',  # Disable missing docstrings warnings
+            '--output-format=text',
+            '--reports=n',  # Disable report generation
+            '-'  # Read from stdin
+        ], exit=False, do_exit=False)
+        lint_message = lint_result.getvalue()
+        return formatted_code, lint_message
     except Exception as e:
-        return str(e)
+        return code, f"Error formatting or linting code: {e}"
 
-def build_docker_image(project_name):
-    client = docker.from_env()
-    image, build_logs = client.images.build(path=".", tag=project_name)
-    return image, build_logs
 
-def run_docker_container(image_name, port):
-    client = docker.from_env()
-    container = client.containers.run(image_name, detach=True, ports={f'{port}/tcp': port})
-    return container
+def translate_code(code, input_language, output_language):
+    """
+    Translates code using the Hugging Face translation pipeline.
 
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()  # Create the database tables if they don't exist
-    app.run()
+    Note: This is a basic example and may not be suitable for all code translation tasks.
+          Consider using more specialized tools for complex code translation.
+    """
+    try:
+        translator = pipeline("translation", model=f"{input_language}-to-{output_language}")
+        translated_code = translator(code, max_length=10000)[0]['translation_text']
+        st.session_state.current_state['toolbox']['translated_code'] = translated_code
+        return translated_code
+    except Exception as e:
+        return f"Error translating code: {e}"
+
+
+def generate_code(code_idea):
+    """Generates code using the Hugging Face text-generation pipeline."""
+    try:
+        generator = pipeline('text-generation', model='gpt2')  # You can replace 'gpt2' with a more suitable model
+        generated_code = generator(f"```python\n{code_idea}\n```", max_length=1000, num_return_sequences=1)[0][
+            'generated_text']
+
+        # Extract code from the generated text (assuming it's wrapped in ```python ... ```)
+        start_index = generated_code.find("```python") + len("```python")
+        end_index = generated_code.find("```", start_index)
+        if start_index != -1 and end_index != -1:
+            generated_code = generated_code[start_index:end_index].strip()
+
+        st.session_state.current_state['toolbox']['generated_code'] = generated_code
+        return generated_code
+    except Exception as e:
+        return f"Error generating code: {e}"
+
+
+def commit_and_push_changes(commit_message):
+    """Commits and pushes changes to the Hugging Face repository."""
+    commands = [
+        "git add .",
+        f"git commit -m '{commit_message}'",
+        "git push"
+    ]
+    for command in commands:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            st.error(f"Error executing command '{command}': {result.stderr}")
+            break
+
+
+# Streamlit App
+st.title("AI Agent Creator")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
+
+if app_mode == "AI Agent Creator":
+    # AI Agent Creator
+    st.header("Create an AI Agent from Text")
+
+    st.subheader("From Text")
+    agent_name = st.text_input("Enter agent name:")
+    text_input = st.text_area("Enter skills (one per line):")
+    if st.button("Create Agent"):
+        agent_prompt = create_agent_from_text(agent_name, text_input)
+        st.success(f"Agent '{agent_name}' created and saved successfully.")
+        st.session_state.available_agents.append(agent_name)
+
+elif app_mode == "Tool Box":
+    # Tool Box
+    st.header("AI-Powered Tools")
+
+    # Chat Interface
+    st.subheader("Chat with CodeCraft")
+    chat_input = st.text_area("Enter your message:")
+    if st.button("Send"):
+        if chat_input.startswith("@"):
+            agent_name = chat_input.split(" ")[0][1:]  # Extract agent_name from @agent_name
+            chat_input = " ".join(chat_input.split(" ")[1:])  # Remove agent_name from input
+            chat_response = chat_interface_with_agent(chat_input, agent_name)
+        else:
+            chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
+
+    # Terminal Interface
+    st.subheader("Terminal")
+    terminal_input = st.text_input("Enter a command:")
+    if st.button("Run"):
+        terminal_output = terminal_interface(terminal_input)
+        st.session_state.terminal_history.append((terminal_input, terminal_output))
+        st.code(terminal_output, language="bash")
+
+    # Code Editor Interface
+    st.subheader("Code Editor")
+    code_editor = st.text_area("Write your code:", height=300)
+    if st.button("Format & Lint"):
+        formatted_code, lint_message = code_editor_interface(code_editor)
+        st.code(formatted_code, language="python")
+        st.info(lint_message)
+
+    # Text Summarization Tool
+    st.subheader("Summarize Text")
+    text_to_summarize = st.text_area("Enter text to summarize:")
+    if st.button("Summarize"):
+        summary = summarize_text(text_to_summarize)
+        st.write(f"Summary: {summary}")
+
+    # Sentiment Analysis Tool
+    st.subheader("Sentiment Analysis")
+    sentiment_text = st.text_area("Enter text for sentiment analysis:")
+    if st.button("Analyze Sentiment"):
+        sentiment = sentiment_analysis(sentiment_text)
+        st.write(f"Sentiment: {sentiment}")
+
+    # Text Translation Tool (Code Translation)
+    st.subheader("Translate Code")
+    code_to_translate = st.text_area("Enter code to translate:")
+    source_language = st.selectbox("Source Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])  # Add more languages as needed
+    target_language = st.selectbox("Target Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])  # Add more languages as needed
+    if st.button("Translate Code"):
+        translated_code = translate_code(code_to_translate, source_language, target_language)
+        st.code(translated_code, language=target_language.lower())
+
+    # Code Generation
+    st.subheader("Code Generation")
+    code_idea = st.text_input("Enter your code idea:")
+    if st.button("Generate Code"):
+        generated_code = generate_code(code_idea)
+        st.code(generated_code, language="python")
+
+    # Display Preset Commands
+    st.subheader("Preset Commands")
+    preset_commands = {
+        "Create a new project": "create_project('project_name')",
+        "Add code to workspace": "add_code_to_workspace('project_name', 'code', 'file_name')",
+        "Run terminal command": "terminal_interface('command', 'project_name')",
+        "Generate code": "generate_code('code_idea')",
+        "Summarize text": "summarize_text('text')",
+        "Analyze sentiment": "sentiment_analysis('text')",
+        "Translate code": "translate_code('code', 'source_language', 'target_language')",
+    }
+    for command_name, command in preset_commands.items():
+        st.write(f"{command_name}: `{command}`")
+
+elif app_mode == "Workspace Chat App":
+    # Workspace Chat App
+    st.header("Workspace Chat App")
+
+    # Project Workspace Creation
+    st.subheader("Create a New Project")
+    project_name = st.text_input("Enter project name:")
+    if st.button("Create Project"):
+        workspace_status = workspace_interface(project_name)
+        st.success(workspace_status)
+
+    # Add Code to Workspace
+    st.subheader("Add Code to Workspace")
+    code_to_add = st.text_area("Enter code to add to workspace:")
+    file_name = st.text_input("Enter file name (e.g. 'app.py'):")
+    if st.button("Add Code"):
+        add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
+        st.success(add_code_status)
+
+    # Terminal Interface with Project Context
+    st.subheader("Terminal (Workspace Context)")
+    terminal_input = st.text_input("Enter a command within the workspace:")
+    if st.button("Run Command"):
+        terminal_output = terminal_interface(terminal_input, project_name)
+        st.code(terminal_output, language="bash")
+
+    # Chat Interface for Guidance
+    st.subheader("Chat with CodeCraft for Guidance")
+    chat_input = st.text_area("Enter your message for guidance:")
+    if st.button("Get Guidance"):
+        chat_response = chat_interface(chat_input)
+        st.session_state.chat_history.append((chat_input, chat_response))
+        st.write(f"CodeCraft: {chat_response}")
+
+    # Display Chat History
+    st.subheader("Chat History")
+    for user_input, response in st.session_state.chat_history:
+        st.write(f"User: {user_input}")
+        st.write(f"CodeCraft: {response}")
+
+    # Display Terminal History
+    st.subheader("Terminal History")
+    for command, output in st.session_state.terminal_history:
+        st.write(f"Command: {command}")
+        st.code(output, language="bash")
+
+    # Display Projects and Files
+    st.subheader("Workspace Projects")
+    for project, details in st.session_state.workspace_projects.items():
+        st.write(f"Project: {project}")
+        for file in details['files']:
+            st.write(f"  - {file}")
+
+    # Chat with AI Agents
+    st.subheader("Chat with AI Agents")
+    selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
+    agent_chat_input = st.text_area("Enter your message for the agent:")
+    if st.button("Send to Agent"):
+        agent_chat_response = chat_interface_with_agent(agent_chat_input, selected_agent)
+        st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
+        st.write(f"{selected_agent}: {agent_chat_response}")
+
+    # Automate Build Process
+    st.subheader("Automate Build Process")
+    if st.button("Automate"):
+        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history,
+                                                    st.session_state.workspace_projects)
+        st.write("Autonomous Build Summary:")
+        st.write(summary)
+        st.write("Next Step:")
+        st.write(next_step)
+
+# Display current state for debugging
+st.sidebar.subheader("Current State")
+st.sidebar.json(st.session_state.current_state)
