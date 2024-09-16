@@ -424,13 +424,4 @@ elif app_mode == "Workspace Chat App":
     st.subheader("Automate Build Process")
     if st.button("Automate"):
         agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-        summary, next_step = agent.autonomous_build(st.session_state.chat_history,
-                                                    st.session_state.workspace_projects)
-        st.write("Autonomous Build Summary:")
-        st.write(summary)
-        st.write("Next Step:")
-        st.write(next_step)
-
-# Display current state for debugging
-st.sidebar.subheader("Current State")
-st.sidebar.json(st.session_state.current_state)
+        summary, next_step = agent.autonomous_build(st.session_state.chat_history
