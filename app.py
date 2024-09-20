@@ -1,4 +1,3 @@
-import os
 import subprocess
 import streamlit as st
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
@@ -43,8 +42,8 @@ I am confident that I can leverage my expertise to assist you in developing and 
 
     def autonomous_build(self, chat_history, workspace_projects):
         """
-        Autonomous build logic that continues based on the state of chat history and workspace projects.
-        This is a placeholder and needs to be implemented based on your specific needs.
+        Autonomous build logic. 
+        For now, it provides a simple summary and suggests the next step.
         """
         summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join(
@@ -56,7 +55,7 @@ I am confident that I can leverage my expertise to assist you in developing and 
 
 
 def save_agent_to_file(agent):
-    """Saves the agent's prompt to a file locally and then commits to the Hugging Face repository."""
+    """Saves the agent's information to files."""
     if not os.path.exists(AGENT_DIRECTORY):
         os.makedirs(AGENT_DIRECTORY)
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
@@ -67,7 +66,8 @@ def save_agent_to_file(agent):
         file.write(f"Agent Name: {agent.name}\nDescription: {agent.description}")
     st.session_state.available_agents.append(agent.name)
 
-    commit_and_push_changes(f"Add agent {agent.name}")
+    # (Optional) Commit and push if you have set up Hugging Face integration.
+    # commit_and_push_changes(f"Add agent {agent.name}")
 
 
 def load_agent_prompt(agent_name):
@@ -82,6 +82,7 @@ def load_agent_prompt(agent_name):
 
 
 def create_agent_from_text(name, text):
+    """Creates an AI agent from the provided text input."""
     skills = text.split('\n')
     agent = AIAgent(name, "AI agent created from text input.", skills)
     save_agent_to_file(agent)
@@ -94,7 +95,7 @@ def chat_interface_with_agent(input_text, agent_name):
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
 
-    # Load the GPT-2 model which is compatible with AutoModelForCausalLM
+    # Load the GPT-2 model 
     model_name = "gpt2"
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -103,19 +104,20 @@ def chat_interface_with_agent(input_text, agent_name):
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
-    # Combine the agent prompt with user input
+    # Combine agent prompt and user input (truncate if necessary)
     combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
-
-    # Truncate input text to avoid exceeding the model's maximum length
-    max_input_length = 900
+    max_input_length = 900 
     input_ids = tokenizer.encode(combined_input, return_tensors="pt")
     if input_ids.shape[1] > max_input_length:
         input_ids = input_ids[:, :max_input_length]
 
-    # Generate chatbot response
+    # Generate response
     outputs = model.generate(
-        input_ids, max_new_tokens=50, num_return_sequences=1, do_sample=True,
-        pad_token_id=tokenizer.eos_token_id  # Set pad_token_id to eos_token_id
+        input_ids, 
+        max_new_tokens=50, 
+        num_return_sequences=1, 
+        do_sample=True,
+        pad_token_id=tokenizer.eos_token_id 
     )
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return response
@@ -123,7 +125,7 @@ def chat_interface_with_agent(input_text, agent_name):
 
 # Basic chat interface (no agent)
 def chat_interface(input_text):
-    # Load the GPT-2 model
+    # Load the GPT-2 model 
     model_name = "gpt2"
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -132,13 +134,14 @@ def chat_interface(input_text):
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
-    # Generate chatbot response
+    # Generate response
     outputs = generator(input_text, max_new_tokens=50, num_return_sequences=1, do_sample=True)
     response = outputs[0]['generated_text']
     return response
 
 
 def workspace_interface(project_name):
+    """Manages project creation."""
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(PROJECT_ROOT):
         os.makedirs(PROJECT_ROOT)
@@ -146,13 +149,15 @@ def workspace_interface(project_name):
         os.makedirs(project_path)
         st.session_state.workspace_projects[project_name] = {"files": []}
         st.session_state.current_state['workspace_chat']['project_name'] = project_name
-        commit_and_push_changes(f"Create project {project_name}")
+        # (Optional) Commit and push if you have set up Hugging Face integration.
+        # commit_and_push_changes(f"Create project {project_name}")
         return f"Project {project_name} created successfully."
     else:
         return f"Project {project_name} already exists."
 
 
 def add_code_to_workspace(project_name, code, file_name):
+    """Adds code to a file in the specified project."""
     project_path = os.path.join(PROJECT_ROOT, project_name)
     if os.path.exists(project_path):
         file_path = os.path.join(project_path, file_name)
@@ -160,13 +165,14 @@ def add_code_to_workspace(project_name, code, file_name):
             file.write(code)
         st.session_state.workspace_projects[project_name]["files"].append(file_name)
         st.session_state.current_state['workspace_chat']['added_code'] = {"file_name": file_name, "code": code}
-        commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
+        # (Optional) Commit and push if you have set up Hugging Face integration.
+        # commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
         return f"Code added to {file_name} in project {project_name} successfully."
     else:
         return f"Project {project_name} does not exist."
 
-
 def terminal_interface(command, project_name=None):
+    """Executes commands in the terminal, optionally within a project's directory."""
     if project_name:
         project_path = os.path.join(PROJECT_ROOT, project_name)
         if not os.path.exists(project_path):
@@ -174,6 +180,7 @@ def terminal_interface(command, project_name=None):
         result = subprocess.run(command, cwd=project_path, shell=True, capture_output=True, text=True)
     else:
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
     if result.returncode == 0:
         st.session_state.current_state['toolbox']['terminal_output'] = result.stdout
         return result.stdout
@@ -183,6 +190,7 @@ def terminal_interface(command, project_name=None):
 
 
 def summarize_text(text):
+    """Summarizes text using a Hugging Face pipeline."""
     summarizer = pipeline("summarization")
     summary = summarizer(text, max_length=100, min_length=25, do_sample=False)
     st.session_state.current_state['toolbox']['summary'] = summary[0]['summary_text']
@@ -190,6 +198,7 @@ def summarize_text(text):
 
 
 def sentiment_analysis(text):
+    """Analyzes sentiment of text using a Hugging Face pipeline."""
     analyzer = pipeline("sentiment-analysis")
     sentiment = analyzer(text)
     st.session_state.current_state['toolbox']['sentiment'] = sentiment[0]
@@ -197,15 +206,15 @@ def sentiment_analysis(text):
 
 
 def code_editor_interface(code):
-    """Formats and lints Python code using black and pylint."""
+    """Formats and lints Python code."""
     try:
         formatted_code = black.format_str(code, mode=black.FileMode())
         lint_result = StringIO()
         lint.Run([
-            '--disable=C0114,C0115,C0116',  # Disable missing docstrings warnings
+            '--disable=C0114,C0115,C0116', 
             '--output-format=text',
-            '--reports=n',  # Disable report generation
-            '-'  # Read from stdin
+            '--reports=n',
+            '-' 
         ], exit=False, do_exit=False)
         lint_message = lint_result.getvalue()
         return formatted_code, lint_message
@@ -214,12 +223,7 @@ def code_editor_interface(code):
 
 
 def translate_code(code, input_language, output_language):
-    """
-    Translates code using the Hugging Face translation pipeline.
-
-    Note: This is a basic example and may not be suitable for all code translation tasks.
-          Consider using more specialized tools for complex code translation.
-    """
+    """Translates code between programming languages."""
     try:
         translator = pipeline("translation", model=f"{input_language}-to-{output_language}")
         translated_code = translator(code, max_length=10000)[0]['translation_text']
@@ -230,13 +234,13 @@ def translate_code(code, input_language, output_language):
 
 
 def generate_code(code_idea):
-    """Generates code using the Hugging Face text-generation pipeline."""
+    """Generates code from a user idea using a Hugging Face pipeline."""
     try:
-        generator = pipeline('text-generation', model='gpt2')  # You can replace 'gpt2' with a more suitable model
+        generator = pipeline('text-generation', model='gpt2') 
         generated_code = generator(f"```python\n{code_idea}\n```", max_length=1000, num_return_sequences=1)[0][
             'generated_text']
 
-        # Extract code from the generated text (assuming it's wrapped in ```python ... ```)
+        # Extract code from the generated text
         start_index = generated_code.find("```python") + len("```python")
         end_index = generated_code.find("```", start_index)
         if start_index != -1 and end_index != -1:
@@ -249,7 +253,9 @@ def generate_code(code_idea):
 
 
 def commit_and_push_changes(commit_message):
-    """Commits and pushes changes to the Hugging Face repository."""
+    """(Optional) Commits and pushes changes. 
+    Needs to be configured for your Hugging Face repository.
+    """
     commands = [
         "git add .",
         f"git commit -m '{commit_message}'",
@@ -262,7 +268,7 @@ def commit_and_push_changes(commit_message):
             break
 
 
-# Streamlit App
+# --- Streamlit App ---
 st.title("AI Agent Creator")
 
 # Sidebar navigation
@@ -270,10 +276,7 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 if app_mode == "AI Agent Creator":
-    # AI Agent Creator
     st.header("Create an AI Agent from Text")
-
-    st.subheader("From Text")
     agent_name = st.text_input("Enter agent name:")
     text_input = st.text_area("Enter skills (one per line):")
     if st.button("Create Agent"):
@@ -282,23 +285,20 @@ if app_mode == "AI Agent Creator":
         st.session_state.available_agents.append(agent_name)
 
 elif app_mode == "Tool Box":
-    # Tool Box
     st.header("AI-Powered Tools")
 
-    # Chat Interface
     st.subheader("Chat with CodeCraft")
     chat_input = st.text_area("Enter your message:")
     if st.button("Send"):
         if chat_input.startswith("@"):
-            agent_name = chat_input.split(" ")[0][1:]  # Extract agent_name from @agent_name
-            chat_input = " ".join(chat_input.split(" ")[1:])  # Remove agent_name from input
+            agent_name = chat_input.split(" ")[0][1:] 
+            chat_input = " ".join(chat_input.split(" ")[1:])  
             chat_response = chat_interface_with_agent(chat_input, agent_name)
         else:
             chat_response = chat_interface(chat_input)
         st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
 
-    # Terminal Interface
     st.subheader("Terminal")
     terminal_input = st.text_input("Enter a command:")
     if st.button("Run"):
@@ -306,7 +306,6 @@ elif app_mode == "Tool Box":
         st.session_state.terminal_history.append((terminal_input, terminal_output))
         st.code(terminal_output, language="bash")
 
-    # Code Editor Interface
     st.subheader("Code Editor")
     code_editor = st.text_area("Write your code:", height=300)
     if st.button("Format & Lint"):
@@ -314,37 +313,32 @@ elif app_mode == "Tool Box":
         st.code(formatted_code, language="python")
         st.info(lint_message)
 
-    # Text Summarization Tool
     st.subheader("Summarize Text")
     text_to_summarize = st.text_area("Enter text to summarize:")
     if st.button("Summarize"):
         summary = summarize_text(text_to_summarize)
         st.write(f"Summary: {summary}")
 
-    # Sentiment Analysis Tool
     st.subheader("Sentiment Analysis")
     sentiment_text = st.text_area("Enter text for sentiment analysis:")
     if st.button("Analyze Sentiment"):
         sentiment = sentiment_analysis(sentiment_text)
         st.write(f"Sentiment: {sentiment}")
 
-    # Text Translation Tool (Code Translation)
     st.subheader("Translate Code")
     code_to_translate = st.text_area("Enter code to translate:")
-    source_language = st.selectbox("Source Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])  # Add more languages as needed
-    target_language = st.selectbox("Target Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])  # Add more languages as needed
+    source_language = st.selectbox("Source Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])
+    target_language = st.selectbox("Target Language", ["en", "fr", "de", "es", "zh", "ja", "ko", "ru"])
     if st.button("Translate Code"):
         translated_code = translate_code(code_to_translate, source_language, target_language)
         st.code(translated_code, language=target_language.lower())
 
-    # Code Generation
     st.subheader("Code Generation")
     code_idea = st.text_input("Enter your code idea:")
     if st.button("Generate Code"):
         generated_code = generate_code(code_idea)
         st.code(generated_code, language="python")
 
-    # Display Preset Commands
     st.subheader("Preset Commands")
     preset_commands = {
         "Create a new project": "create_project('project_name')",
@@ -359,17 +353,14 @@ elif app_mode == "Tool Box":
         st.write(f"{command_name}: `{command}`")
 
 elif app_mode == "Workspace Chat App":
-    # Workspace Chat App
     st.header("Workspace Chat App")
 
-    # Project Workspace Creation
     st.subheader("Create a New Project")
     project_name = st.text_input("Enter project name:")
     if st.button("Create Project"):
         workspace_status = workspace_interface(project_name)
         st.success(workspace_status)
 
-    # Add Code to Workspace
     st.subheader("Add Code to Workspace")
     code_to_add = st.text_area("Enter code to add to workspace:")
     file_name = st.text_input("Enter file name (e.g. 'app.py'):")
@@ -377,14 +368,12 @@ elif app_mode == "Workspace Chat App":
         add_code_status = add_code_to_workspace(project_name, code_to_add, file_name)
         st.success(add_code_status)
 
-    # Terminal Interface with Project Context
     st.subheader("Terminal (Workspace Context)")
     terminal_input = st.text_input("Enter a command within the workspace:")
     if st.button("Run Command"):
         terminal_output = terminal_interface(terminal_input, project_name)
         st.code(terminal_output, language="bash")
 
-    # Chat Interface for Guidance
     st.subheader("Chat with CodeCraft for Guidance")
     chat_input = st.text_area("Enter your message for guidance:")
     if st.button("Get Guidance"):
@@ -392,26 +381,22 @@ elif app_mode == "Workspace Chat App":
         st.session_state.chat_history.append((chat_input, chat_response))
         st.write(f"CodeCraft: {chat_response}")
 
-    # Display Chat History
     st.subheader("Chat History")
     for user_input, response in st.session_state.chat_history:
         st.write(f"User: {user_input}")
         st.write(f"CodeCraft: {response}")
 
-    # Display Terminal History
     st.subheader("Terminal History")
     for command, output in st.session_state.terminal_history:
         st.write(f"Command: {command}")
         st.code(output, language="bash")
 
-    # Display Projects and Files
     st.subheader("Workspace Projects")
     for project, details in st.session_state.workspace_projects.items():
         st.write(f"Project: {project}")
         for file in details['files']:
             st.write(f"  - {file}")
 
-    # Chat with AI Agents
     st.subheader("Chat with AI Agents")
     selected_agent = st.selectbox("Select an AI agent", st.session_state.available_agents)
     agent_chat_input = st.text_area("Enter your message for the agent:")
@@ -420,8 +405,14 @@ elif app_mode == "Workspace Chat App":
         st.session_state.chat_history.append((agent_chat_input, agent_chat_response))
         st.write(f"{selected_agent}: {agent_chat_response}")
 
-    # Automate Build Process
     st.subheader("Automate Build Process")
     if st.button("Automate"):
-        agent = AIAgent(selected_agent, "", [])  # Load the agent without skills for now
-        summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+        if selected_agent:
+            agent = AIAgent(selected_agent, "", []) 
+            summary, next_step = agent.autonomous_build(st.session_state.chat_history, st.session_state.workspace_projects)
+            st.write("Autonomous Build Summary:")
+            st.write(summary)
+            st.write("Next Step:")
+            st.write(next_step)
+        else:
+            st.warning("Please select an AI agent first.")
