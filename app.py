@@ -90,7 +90,6 @@ def create_agent_from_text(name, text):
     return agent.create_agent_prompt()
 
 
-# Chat interface using a selected agent
 def chat_interface_with_agent(input_text, agent_name):
     agent_prompt = load_agent_prompt(agent_name)
     if agent_prompt is None:
