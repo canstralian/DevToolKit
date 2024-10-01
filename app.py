@@ -216,7 +216,8 @@ def code_editor_interface(code):
             '--output-format=text',
             '--reports=n',
             '-' 
-        ]), lint_message = lint_result.getvalue()
+        ]), 
+        lint_message = lint_result.getvalue()
         return formatted_code, lint_message
     except Exception as e:
         return code, f"Error formatting or linting code: {e}"
