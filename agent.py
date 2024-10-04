@@ -101,7 +101,7 @@ __all__ = [
     "create_interface",
     "format_prompt_var",
     "generate",
-    "MAX_HISTORY",
+    # "MAX_HISTORY",
     "client",
     "VERBOSE",
     "date_time_str",
