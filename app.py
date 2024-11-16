@@ -1,10 +1,12 @@
 import os
 import subprocess
+import sys  # Add sys import
 import streamlit as st
 import black
 from pylint import lint
 from io import StringIO
 from mixtral import InstructModel  # Import Mixtral Instruct
+
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -81,6 +83,15 @@ def create_agent_from_text(name, text):
     save_agent_to_file(agent)
     return agent.create_agent_prompt()
 
+def chat_interface(input_text):
+    """Handles chat interactions without a specific agent."""
+    try:
+        model = InstructModel()
+        response = model.generate_response(f"User: {input_text}\nAI:")
+        return response
+    except EnvironmentError as e:
+        return f"Error communicating with AI: {e}"
+
 def chat_interface_with_agent(input_text, agent_name):
     agent_prompt = load_agent_prompt(agent_name)
     if agent_prompt is None:
@@ -141,28 +152,32 @@ def code_editor_interface(code):
         formatted_code = black.format_str(code, mode=black.FileMode())
     except black.NothingChanged:
         formatted_code = code
+    except Exception as e:
+        return None, f"Error formatting code with black: {e}"
+
     result = StringIO()
     sys.stdout = result
     sys.stderr = result
-    (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
-    sys.stdout = sys.__stdout__
-    sys.stderr = sys.__stderr__
-    lint_message = pylint_stdout.getvalue() + pylint_stderr.getvalue()
-    st.session_state.current_state['toolbox']['formatted_code'] = formatted_code
-    st.session_state.current_state['toolbox']['lint_message'] = lint_message
+    try:
+        (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
+        lint_message = pylint_stdout.getvalue() + pylint_stderr.getvalue()
+    except Exception as e:
+        return None, f"Error linting code with pylint: {e}"
+    finally:
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
     return formatted_code, lint_message
 
 def translate_code(code, input_language, output_language):
     try:
-        model = InstructModel()  # Initialize Mixtral Instruct model
+        model = InstructModel()
+        prompt = f"Translate the following {input_language} code to {output_language}:\n\n{code}"
+        translated_code = model.generate_response(prompt)
+        return translated_code
     except EnvironmentError as e:
-        return f"Error loading model: {e}"
-
-    prompt = f"Translate the following {input_language} code to {output_language}:\n\n{code}"
-    translated_code = model.generate_response(prompt)
-    st.session_state.current_state['toolbox']['translated_code'] = translated_code
-    return translated_code
-
+        return f"Error loading model or translating code: {e}"
+    except Exception as e: # Catch other potential errors during translation.
+        return f"An unexpected error occurred during code translation: {e}"
 def generate_code(code_idea):
     try:
         model = InstructModel()  # Initialize Mixtral Instruct model
@@ -175,17 +190,16 @@ def generate_code(code_idea):
     return generated_code
 
 def commit_and_push_changes(commit_message):
-    """Commits and pushes changes to the Hugging Face repository."""
-    commands = [
-        "git add .",
-        f"git commit -m '{commit_message}'",
-        "git push"
-    ]
-    for command in commands:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            st.error(f"Error executing command '{command}': {result.stderr}")
-            break
+    """Commits and pushes changes to the Hugging Face repository (needs improvement)."""
+    try:
+        # Add error checking for git repository existence.
+        subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", commit_message], check=True, capture_output=True, text=True)
+        subprocess.run(["git", "push"], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Git command failed: {e.stderr}")
+    except FileNotFoundError:
+        st.error("Git not found. Please ensure Git is installed and configured.")
 
 # Streamlit App
 st.title("AI Agent Creator")
