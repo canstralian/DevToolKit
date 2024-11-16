@@ -12,7 +12,6 @@ docker
 python-dotenv
 torch
 tensor
-tensorrt-cu12
 opencv-python
 gradio
 cookiecutter
