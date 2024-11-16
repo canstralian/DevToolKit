@@ -1,7 +1,6 @@
 import os
 import subprocess
 import streamlit as st
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import black
 from pylint import lint
 from io import StringIO
@@ -154,16 +153,24 @@ def code_editor_interface(code):
     return formatted_code, lint_message
 
 def translate_code(code, input_language, output_language):
-    # Use a Hugging Face translation model to handle end-to-end code translation
-    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-es")  # Example: English to Spanish
-    translated_code = translator(code, target_lang=output_language)[0]['translation_text']
+    try:
+        model = InstructModel()  # Initialize Mixtral Instruct model
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    prompt = f"Translate the following {input_language} code to {output_language}:\n\n{code}"
+    translated_code = model.generate_response(prompt)
     st.session_state.current_state['toolbox']['translated_code'] = translated_code
     return translated_code
 
 def generate_code(code_idea):
-    # Use a Hugging Face code generation model
-    generator = pipeline('text-generation', model='bigcode/starcoder')
-    generated_code = generator(code_idea, max_length=1000, num_return_sequences=1)[0]['generated_text']
+    try:
+        model = InstructModel()  # Initialize Mixtral Instruct model
+    except EnvironmentError as e:
+        return f"Error loading model: {e}"
+
+    prompt = f"Generate code for the following idea:\n\n{code_idea}"
+    generated_code = model.generate_response(prompt)
     st.session_state.current_state['toolbox']['generated_code'] = generated_code
     return generated_code
 
