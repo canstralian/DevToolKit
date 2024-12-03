@@ -21,5 +21,6 @@ Flask-SQLAlchemy
 Flask-Login
 bs4
 GitPython
+mistral-inference
 pytest
 faiss-cpu
