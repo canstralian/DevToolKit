@@ -1,10 +1,18 @@
 import os
 import subprocess
-import sys  # Add sys import
+import sys
 import streamlit as st
 import black
 from pylint import lint
 from io import StringIO
+import requests
+import logging
+import atexit
+import time
+from datetime import datetime
+
+# Import the InstructModel from the appropriate library
+from mistralai import InstructModel  # Ensure you have the correct import for the model
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
@@ -36,24 +44,17 @@ class AIAgent:
         agent_prompt = f"""
 As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
 {skills_str}
-
 I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
 """
         return agent_prompt
 
     def autonomous_build(self, chat_history, workspace_projects):
-        """
-        Autonomous build logic that continues based on the state of chat history and workspace projects.
-        """
-        summary = "Chat History:\n" + "\n".join([f"User: {u}\nAgent: {a}" for u, a in chat_history])
+        summary = "Chat History:\n" + "\n".join([f":User  {u}\nAgent: {a}" for u, a in chat_history])
         summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
-
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
-
         return summary, next_step
 
 def save_agent_to_file(agent):
-    """Saves the agent's prompt to a file locally and then commits to the Hugging Face repository."""
     if not os.path.exists(AGENT_DIRECTORY):
         os.makedirs(AGENT_DIRECTORY)
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
@@ -66,7 +67,6 @@ def save_agent_to_file(agent):
     commit_and_push_changes(f"Add agent {agent.name}")
 
 def load_agent_prompt(agent_name):
-    """Loads an agent prompt from a file."""
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent_name}.txt")
     if os.path.exists(file_path):
         with open(file_path, "r") as file:
@@ -84,8 +84,8 @@ def create_agent_from_text(name, text):
 def chat_interface(input_text):
     """Handles chat interactions without a specific agent."""
     try:
-        model = InstructModel()
-        response = model.generate_response(f"User: {input_text}\nAI:")
+        model = InstructModel()  # Initialize the Mixtral Instruct model
+        response = model.generate_response(f":User  {input_text}\nAI:")
         return response
     except EnvironmentError as e:
         return f"Error communicating with AI: {e}"
@@ -100,8 +100,8 @@ def chat_interface_with_agent(input_text, agent_name):
     except EnvironmentError as e:
         return f"Error loading model: {e}"
 
-    combined_input = f"{agent_prompt}\n\nUser: {input_text}\nAgent:"
-    response = model.generate_response(combined_input)  # Generate response using Mixtral Instruct
+    combined_input = f"{agent_prompt}\n\n:User  {input_text}\nAgent:"
+    response = model.generate_response(combined_input)  ```python
     return response
 
 def workspace_interface(project_name):
@@ -174,8 +174,9 @@ def translate_code(code, input_language, output_language):
         return translated_code
     except EnvironmentError as e:
         return f"Error loading model or translating code: {e}"
-    except Exception as e: # Catch other potential errors during translation.
+    except Exception as e:
         return f"An unexpected error occurred during code translation: {e}"
+
 def generate_code(code_idea):
     try:
         model = InstructModel()  # Initialize Mixtral Instruct model
@@ -190,7 +191,6 @@ def generate_code(code_idea):
 def commit_and_push_changes(commit_message):
     """Commits and pushes changes to the Hugging Face repository (needs improvement)."""
     try:
-        # Add error checking for git repository existence.
         subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True, capture_output=True, text=True)
         subprocess.run(["git", "push"], check=True, capture_output=True, text=True)
@@ -207,6 +207,7 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 if app_mode == "AI Agent Creator":
+ ```python
     # AI Agent Creator
     st.header("Create an AI Agent from Text")
 
@@ -304,7 +305,7 @@ elif app_mode == "Workspace Chat App":
     # Display Chat History
     st.subheader("Chat History")
     for user_input, response in st.session_state.chat_history:
-        st.write(f"User: {user_input}")
+        st.write(f":User  {user_input}")
         st.write(f"CodeCraft: {response}")
 
     # Display Terminal History
@@ -316,7 +317,7 @@ elif app_mode == "Workspace Chat App":
     # Display Projects and Files
     st.subheader("Workspace Projects")
     for project, details in st.session_state.workspace_projects.items():
-        st.write(f"Project: {project}")
+        st.write(f"Project: {project }")
         for file in details['files']:
             st.write(f"  - {file}")
 
