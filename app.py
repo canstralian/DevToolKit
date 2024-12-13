@@ -101,7 +101,7 @@ def chat_interface_with_agent(input_text, agent_name):
         return f"Error loading model: {e}"
 
     combined_input = f"{agent_prompt}\n\n:User  {input_text}\nAgent:"
-    response = model.generate_response(combined_input)  ```python
+    response = model.generate_response(combined_input)
     return response
 
 def workspace_interface(project_name):
