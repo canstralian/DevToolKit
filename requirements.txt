@@ -19,6 +19,7 @@ transformers==4.28.0
 huggingface_hub[cli]
 Flask-SQLAlchemy
 Flask-Login
+accelerate
 bs4
 GitPython
 mistral-inference
