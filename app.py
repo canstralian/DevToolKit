@@ -33,6 +33,61 @@ if 'current_state' not in st.session_state:
         'workspace_chat': {}
     }
 
+class InstructModel:
+    def __init__(self):
+        """Initialize the Mixtral-8x7B-Instruct model"""
+        try:
+            self.model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
+        except Exception as e:
+            raise EnvironmentError(f"Failed to load model: {str(e)}")
+
+    def generate_response(self, prompt: str) -> str:
+        """Generate a response using the Mixtral model"""
+        try:
+            # Format the prompt according to Mixtral's expected format
+            formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+            
+            # Tokenize input
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
+            
+            # Generate response
+            outputs = self.model.generate(
+                inputs.input_ids,
+                max_new_tokens=512,
+                temperature=0.7,
+                top_p=0.95,
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+            
+            # Decode and clean up response
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Remove the prompt from the response
+            response = response.replace(formatted_prompt, "").strip()
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Error generating response: {str(e)}")
+
+    def __del__(self):
+        """Cleanup when the model is no longer needed"""
+        try:
+            del self.model
+            del self.tokenizer
+            torch.cuda.empty_cache()
+        except:
+            pass
+
+            
+
 class AIAgent:
     def __init__(self, name, description, skills):
         self.name = name
