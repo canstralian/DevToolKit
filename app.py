@@ -11,9 +11,6 @@ import atexit
 import time
 from datetime import datetime
 
-# Import the InstructModel from the appropriate library
-from mistralai import InstructModel  # Ensure you have the correct import for the model
-
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
