@@ -5,8 +5,6 @@ import streamlit as st
 import black
 from pylint import lint
 from io import StringIO
-from mixtral import InstructModel  # Import Mixtral Instruct
-
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
