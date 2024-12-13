@@ -207,7 +207,6 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 if app_mode == "AI Agent Creator":
- ```python
     # AI Agent Creator
     st.header("Create an AI Agent from Text")
 
