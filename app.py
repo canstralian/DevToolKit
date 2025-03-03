@@ -5,36 +5,44 @@ import streamlit as st
 import black
 from pylint import lint
 from io import StringIO
-import requests
 import logging
 import atexit
 import time
 from datetime import datetime
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
 HUGGING_FACE_REPO_URL = "https://huggingface.co/spaces/acecalisto3/DevToolKit"
 PROJECT_ROOT = "projects"
 AGENT_DIRECTORY = "agents"
 
-# Global state to manage communication between Tool Box and Workspace Chat App
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'terminal_history' not in st.session_state:
-    st.session_state.terminal_history = []
-if 'workspace_projects' not in st.session_state:
-    st.session_state.workspace_projects = {}
-if 'available_agents' not in st.session_state:
-    st.session_state.available_agents = []
-if 'current_state' not in st.session_state:
-    st.session_state.current_state = {
-        'toolbox': {},
-        'workspace_chat': {}
-    }
+# Initialize session state
+def initialize_session_state():
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'terminal_history' not in st.session_state:
+        st.session_state.terminal_history = []
+    if 'workspace_projects' not in st.session_state:
+        st.session_state.workspace_projects = {}
+    if 'available_agents' not in st.session_state:
+        st.session_state.available_agents = []
+    if 'current_state' not in st.session_state:
+        st.session_state.current_state = {
+            'toolbox': {},
+            'workspace_chat': {}
+        }
+
+initialize_session_state()
 
 class InstructModel:
     def __init__(self):
         """Initialize the Mixtral-8x7B-Instruct model"""
+        self.model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        self.load_model()
+
+    def load_model(self):
+        """Load the model and tokenizer"""
         try:
-            self.model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
@@ -46,33 +54,26 @@ class InstructModel:
 
     def generate_response(self, prompt: str) -> str:
         """Generate a response using the Mixtral model"""
-        try:
-            # Format the prompt according to Mixtral's expected format
-            formatted_prompt = f"<s>[INST] {prompt} [/INST]"
-            
-            # Tokenize input
-            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
-            
-            # Generate response
-            outputs = self.model.generate(
-                inputs.input_ids,
-                max_new_tokens=512,
-                temperature=0.7,
-                top_p=0.95,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-            
-            # Decode and clean up response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Remove the prompt from the response
-            response = response.replace(formatted_prompt, "").strip()
-            
-            return response
-            
-        except Exception as e:
-            raise Exception(f"Error generating response: {str(e)}")
+        formatted_prompt = self.format_prompt(prompt)
+        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
+        outputs = self.model.generate(
+            inputs.input_ids,
+            max_new_tokens=512,
+            temperature=0.7,
+            top_p=0.95,
+            do_sample=True,
+            pad_token_id=self.tokenizer.eos_token_id
+        )
+        return self.clean_response(outputs, formatted_prompt)
+
+    def format_prompt(self, prompt: str) -> str:
+        """Format the prompt for the model"""
+        return f"<s>[INST] {prompt} [/INST]"
+
+    def clean_response(self, outputs, formatted_prompt: str) -> str:
+        """Decode and clean up the model's response"""
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return response.replace(formatted_prompt, "").strip()
 
     def __del__(self):
         """Cleanup when the model is no longer needed"""
@@ -83,8 +84,6 @@ class InstructModel:
         except:
             pass
 
-            
-
 class AIAgent:
     def __init__(self, name, description, skills):
         self.name = name
@@ -93,22 +92,26 @@ class AIAgent:
 
     def create_agent_prompt(self):
         skills_str = '\n'.join([f"* {skill}" for skill in self.skills])
-        agent_prompt = f"""
-As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
-{skills_str}
-I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
-"""
-        return agent_prompt
+        return f"""
+        As an elite expert developer, my name is {self.name}. I possess a comprehensive understanding of the following areas:
+        {skills_str}
+        I am confident that I can leverage my expertise to assist you in developing and deploying cutting-edge web applications. Please feel free to ask any questions or present any challenges you may encounter.
+        """
 
     def autonomous_build(self, chat_history, workspace_projects):
-        summary = "Chat History:\n" + "\n".join([f":User  {u}\nAgent: {a}" for u, a in chat_history])
-        summary += "\n\nWorkspace Projects:\n" + "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
+        summary = self.summarize_chat_history(chat_history)
+        summary += "\n\nWorkspace Projects:\n" + self.summarize_workspace_projects(workspace_projects)
         next_step = "Based on the current state, the next logical step is to implement the main application logic."
         return summary, next_step
 
+    def summarize_chat_history(self, chat_history):
+        return "Chat History:\n" + "\n".join([f":User  {u}\nAgent: {a}" for u, a in chat_history])
+
+    def summarize_workspace_projects(self, workspace_projects):
+        return "\n".join([f"{p}: {details}" for p, details in workspace_projects.items()])
+
 def save_agent_to_file(agent):
-    if not os.path.exists(AGENT_DIRECTORY):
-        os.makedirs(AGENT_DIRECTORY)
+    os.makedirs(AGENT_DIRECTORY, exist_ok=True)
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}.txt")
     config_path = os.path.join(AGENT_DIRECTORY, f"{agent.name}Config.txt")
     with open(file_path, "w") as file:
@@ -122,10 +125,8 @@ def load_agent_prompt(agent_name):
     file_path = os.path.join(AGENT_DIRECTORY, f"{agent_name}.txt")
     if os.path.exists(file_path):
         with open(file_path, "r") as file:
-            agent_prompt = file.read()
-        return agent_prompt
-    else:
-        return None
+            return file.read()
+    return None
 
 def create_agent_from_text(name, text):
     skills = text.split('\n')
@@ -135,39 +136,27 @@ def create_agent_from_text(name, text):
 
 def chat_interface(input_text):
     """Handles chat interactions without a specific agent."""
-    try:
-        model = InstructModel()  # Initialize the Mixtral Instruct model
-        response = model.generate_response(f":User  {input_text}\nAI:")
-        return response
-    except EnvironmentError as e:
-        return f"Error communicating with AI: {e}"
+    model = InstructModel()
+    return model.generate_response(f":User  {input_text}\nAI:")
 
 def chat_interface_with_agent(input_text, agent_name):
     agent_prompt = load_agent_prompt(agent_name)
     if agent_prompt is None:
         return f"Agent {agent_name} not found."
-
-    try:
-        model = InstructModel()  # Initialize Mixtral Instruct model
-    except EnvironmentError as e:
-        return f"Error loading model: {e}"
-
+    model = InstructModel()
     combined_input = f"{agent_prompt}\n\n:User  {input_text}\nAgent:"
-    response = model.generate_response(combined_input)
-    return response
+    return model.generate_response(combined_input)
 
 def workspace_interface(project_name):
     project_path = os.path.join(PROJECT_ROOT, project_name)
-    if not os.path.exists(PROJECT_ROOT):
-        os.makedirs(PROJECT_ROOT)
+    os.makedirs(PROJECT_ROOT, exist_ok=True)
     if not os.path.exists(project_path):
         os.makedirs(project_path)
         st.session_state.workspace_projects[project_name] = {"files": []}
         st.session_state.current_state['workspace_chat']['project_name'] = project_name
         commit_and_push_changes(f"Create project {project_name}")
         return f"Project {project_name} created successfully."
-    else:
-        return f"Project {project_name} already exists."
+    return f"Project {project_name} already exists."
 
 def add_code_to_workspace(project_name, code, file_name):
     project_path = os.path.join(PROJECT_ROOT, project_name)
@@ -179,8 +168,7 @@ def add_code_to_workspace(project_name, code, file_name):
         st.session_state.current_state['workspace_chat']['added_code'] = {"file_name": file_name, "code": code}
         commit_and_push_changes(f"Add code to {file_name} in project {project_name}")
         return f"Code added to {file_name} in project {project_name} successfully."
-    else:
-        return f"Project {project_name} does not exist."
+    return f"Project {project_name} does not exist."
 
 def terminal_interface(command, project_name=None):
     if project_name:
@@ -190,58 +178,50 @@ def terminal_interface(command, project_name=None):
         result = subprocess.run(command, cwd=project_path, shell=True, capture_output=True, text=True)
     else:
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        st.session_state.current_state['toolbox']['terminal_output'] = result.stdout
-        return result.stdout
-    else:
-        st.session_state.current_state['toolbox']['terminal_output'] = result.stderr
-        return result.stderr
+    output = result.stdout if result.returncode == 0 else result.stderr
+    st.session_state.current_state['toolbox']['terminal_output'] = output
+    return output
 
 def code_editor_interface(code):
+    formatted_code = format_code(code)
+    lint_message = lint_code(formatted_code)
+    return formatted_code, lint_message
+
+def format_code(code):
     try:
-        formatted_code = black.format_str(code, mode=black.FileMode())
+        return black.format_str(code, mode=black.FileMode())
     except black.NothingChanged:
-        formatted_code = code
+        return code
     except Exception as e:
         return None, f"Error formatting code with black: {e}"
 
+def lint_code(code):
     result = StringIO()
     sys.stdout = result
     sys.stderr = result
     try:
         (pylint_stdout, pylint_stderr) = lint.py_run(code, return_std=True)
-        lint_message = pylint_stdout.getvalue() + pylint_stderr.getvalue()
+        return pylint_stdout.getvalue() + pylint_stderr.getvalue()
     except Exception as e:
         return None, f"Error linting code with pylint: {e}"
     finally:
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
-    return formatted_code, lint_message
 
 def translate_code(code, input_language, output_language):
-    try:
-        model = InstructModel()
-        prompt = f"Translate the following {input_language} code to {output_language}:\n\n{code}"
-        translated_code = model.generate_response(prompt)
-        return translated_code
-    except EnvironmentError as e:
-        return f"Error loading model or translating code: {e}"
-    except Exception as e:
-        return f"An unexpected error occurred during code translation: {e}"
+    model = InstructModel()
+    prompt = f"Translate the following {input_language} code to {output_language}:\n\n{code}"
+    return model.generate_response(prompt)
 
 def generate_code(code_idea):
-    try:
-        model = InstructModel()  # Initialize Mixtral Instruct model
-    except EnvironmentError as e:
-        return f"Error loading model: {e}"
-
+    model = InstructModel()
     prompt = f"Generate code for the following idea:\n\n{code_idea}"
     generated_code = model.generate_response(prompt)
     st.session_state.current_state['toolbox']['generated_code'] = generated_code
     return generated_code
 
 def commit_and_push_changes(commit_message):
-    """Commits and pushes changes to the Hugging Face repository (needs improvement)."""
+    """Commits and pushes changes to the Hugging Face repository."""
     try:
         subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True, capture_output=True, text=True)
@@ -259,10 +239,7 @@ st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose the app mode", ["AI Agent Creator", "Tool Box", "Workspace Chat App"])
 
 if app_mode == "AI Agent Creator":
-    # AI Agent Creator
     st.header("Create an AI Agent from Text")
-
-    st.subheader("From Text")
     agent_name = st.text_input("Enter agent name:")
     text_input = st.text_area("Enter skills (one per line):")
     if st.button("Create Agent"):
@@ -271,7 +248,6 @@ if app_mode == "AI Agent Creator":
         st.session_state.available_agents.append(agent_name)
 
 elif app_mode == "Tool Box":
-    # Tool Box
     st.header("AI-Powered Tools")
 
     # Chat Interface
@@ -320,7 +296,6 @@ elif app_mode == "Tool Box":
         st.code(generated_code, language="python")
 
 elif app_mode == "Workspace Chat App":
-    # Workspace Chat App
     st.header("Workspace Chat App")
 
     # Project Workspace Creation
