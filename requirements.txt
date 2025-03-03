@@ -15,7 +15,7 @@ tensor
 opencv-python
 gradio
 cookiecutter
-transformers==4.28.0
+transformers==4.48.0
 huggingface_hub[cli]
 Flask-SQLAlchemy
 Flask-Login
