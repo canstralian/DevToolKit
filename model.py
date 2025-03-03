@@ -1,4 +1,4 @@
-```python
+
 import torch.nn as nn
 from transformers import AutoModelForCausalLM
 
@@ -38,4 +38,3 @@ class CodeGenerator(nn.Module):
         torch.Tensor: The output tensor containing the generated code.
         """
         return self.model(input_ids)[0]
-```
