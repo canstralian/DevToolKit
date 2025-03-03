@@ -20,6 +20,5 @@ models:
 [![Streamlit App](https://img.shields.io/badge/Streamlit-App-orange.svg)](https://streamlit.io/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Models: Gemini Pro 2.0, CodeT5-small, T0_3B](https://img.shields.io/badge/Models-Gemini%20Pro%202.0%2C%20CodeT5--small%2C%20T0_3B-green)](https://huggingface.co/whackthejacker/ensemble-model-app-builder)
-[![Models: Gemini Pro 2.0, CodeT5-small, T0_3B](https://img.shields.io/badge/Models-Gemini%20Pro%202.0%2C%20CodeT5--small%2C%20T0_3B-green)](https://huggingface.co/whackthejacker/ensemble-model-app-builder)
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
